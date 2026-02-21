@@ -5,7 +5,11 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, useTexture, Decal } from '@react-three/drei';
 import * as THREE from 'three';
 
-// ─── Preload ──────────────────────────────────────────────────────────────────
+// ─── Draco decoder — required for Draco-compressed GLBs ──────────────────────
+// drei's useGLTF handles Draco automatically; point it at Google's stable CDN.
+useGLTF.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+
+// ─── Preload — absolute root paths (served from client/public/ via Vite) ─────
 useGLTF.preload('/t-shirt.glb');
 useGLTF.preload('/polo.glb');
 useGLTF.preload('/hoodie.glb');

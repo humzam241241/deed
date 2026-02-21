@@ -1,0 +1,28 @@
+{
+  "buildCommand": "cd client && npm install --legacy-peer-deps && npm run build",
+  "outputDirectory": "client/dist",
+  "installCommand": "echo 'skipping root install'",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/((?!.*\\.(?:glb|gltf|png|jpg|jpeg|svg|webp|ico|woff|woff2|ttf|eot|mp4|mp3|pdf|json|xml|css|js|map|txt|wav|ogg|gz|br)).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)\\.glb",
+      "headers": [
+        { "key": "Content-Type", "value": "model/gltf-binary" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/(.*)\\.gltf",
+      "headers": [
+        { "key": "Content-Type", "value": "model/gltf+json" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ]
+}
