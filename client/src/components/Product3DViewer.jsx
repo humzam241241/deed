@@ -1,180 +1,254 @@
 import React, {
-  useRef, useMemo, useState, useLayoutEffect, useEffect, Suspense,
+  useRef, useMemo, useEffect, useLayoutEffect, Suspense,
 } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, useTexture, Decal } from '@react-three/drei';
 import * as THREE from 'three';
 
-// ─── Preload all GLBs ─────────────────────────────────────────────────────────
+// ─── Preload ──────────────────────────────────────────────────────────────────
 useGLTF.preload('/t-shirt.glb');
 useGLTF.preload('/polo.glb');
 useGLTF.preload('/hoodie.glb');
 useGLTF.preload('/hat.glb');
 
-const GREY = '#c0c0c0'; // neutral mockup grey
+const GREY = '#c0c0c0';
 
-// ─── Auto-normalise: centre + scale any GLB to fit targetSize ─────────────────
-function useAutoNormalize(outerRef, targetSize = 3.6) {
-  const [info, setInfo] = useState({ frontZ: 2.0, topY: 1.8, halfW: 1.1, halfH: 0.9 });
-
+// ─── Auto-normalise: scale + centre any group to fit targetSize units ─────────
+function useAutoNormalize(ref, targetSize = 3.6) {
   useLayoutEffect(() => {
-    if (!outerRef.current) return;
-    const box = new THREE.Box3().setFromObject(outerRef.current);
+    if (!ref.current) return;
+    const box = new THREE.Box3().setFromObject(ref.current);
     if (box.isEmpty()) return;
-
-    const size   = new THREE.Vector3();
+    const size = new THREE.Vector3();
     const center = new THREE.Vector3();
     box.getSize(size);
     box.getCenter(center);
-
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale  = targetSize / maxDim;
-
-    outerRef.current.scale.setScalar(scale);
-    outerRef.current.position.set(
-      -center.x * scale,
-      -center.y * scale,
-      -center.z * scale,
-    );
-
-    // Re-measure after scaling
-    const box2 = new THREE.Box3().setFromObject(outerRef.current);
-    const sz2  = new THREE.Vector3();
-    box2.getSize(sz2);
-
-    setInfo({
-      frontZ: box2.max.z + 0.06,
-      topY:   box2.max.y,
-      halfW:  sz2.x * 0.36,
-      halfH:  sz2.y * 0.27,
-    });
+    const s = targetSize / Math.max(size.x, size.y, size.z);
+    ref.current.scale.setScalar(s);
+    ref.current.position.set(-center.x * s, -center.y * s, -center.z * s);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  return info;
 }
 
 // ─── Idle sway ────────────────────────────────────────────────────────────────
-function useIdleSway(ref, speed = 0.4, amplitude = 0.06) {
+function useIdleSway(ref, speed = 0.4, amp = 0.06) {
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = Math.sin(clock.elapsedTime * speed) * amplitude;
+    if (ref.current) ref.current.rotation.y = Math.sin(clock.elapsedTime * speed) * amp;
   });
 }
 
-// ─── Apply garment color to all meshes (skip by keyword) ─────────────────────
-function applyColor(scene, color, skipKeywords = []) {
-  scene.traverse((node) => {
-    if (!node.isMesh) return;
-    const skip = skipKeywords.some(k => node.name.toLowerCase().includes(k));
-    if (skip) return;
-    node.castShadow     = true;
-    node.receiveShadow  = true;
-    node.material       = node.material.clone();
-    node.material.color.set(color);
-    node.material.roughness   = 0.88;
-    node.material.metalness   = 0.02;
-    node.material.needsUpdate = true;
-  });
-}
-
-// ─── Design overlay plane (always renders on top of the garment) ──────────────
-function DesignOverlay({ frontZ, halfW, halfH, texture, sizeMultiplier = 1 }) {
-  const w = (halfW ?? 1.1) * 2 * sizeMultiplier;
-  const h = (halfH ?? 0.9) * 2 * sizeMultiplier;
-  return (
-    <mesh position={[0, 0.05, frontZ]} renderOrder={1}>
-      <planeGeometry args={[w, h]} />
-      <meshBasicMaterial
-        map={texture}
-        transparent
-        alphaTest={0.04}
-        depthTest={false}
-        depthWrite={false}
-        polygonOffset
-        polygonOffsetFactor={-4}
-      />
-    </mesh>
+// ─── Stable MeshStandardMaterial that updates when color changes ──────────────
+// Returns the same THREE.Material instance; avoids recreating every render.
+function useGarmentMat(color) {
+  const mat = useMemo(
+    () => new THREE.MeshStandardMaterial({ roughness: 0.86, metalness: 0.02 }),
+    [],
   );
+  useEffect(() => {
+    mat.color.set(color);
+    mat.map = null;           // remove original texture so our color wins
+    mat.needsUpdate = true;
+  }, [color, mat]);
+  return mat;
+}
+
+// ─── Compute Decal position/scale from a buffer geometry's AABB ───────────────
+function geoDecal(geometry, opts = {}) {
+  const {
+    xOff = 0, yOff = 0.08,
+    zMult = 0.93,
+    wFrac = 0.55, hFrac = 0.38,
+  } = opts;
+
+  const fallback = { pos: [0, 0.2, 1.0], scale: [1.0, 0.8, 0.5] };
+  if (!geometry?.attributes?.position) return fallback;
+
+  try {
+    const box = new THREE.Box3().setFromBufferAttribute(geometry.attributes.position);
+    const c = new THREE.Vector3();
+    const s = new THREE.Vector3();
+    box.getCenter(c);
+    box.getSize(s);
+    if (!s.x || !s.y || !s.z) return fallback;
+    return {
+      pos:   [c.x + s.x * xOff, c.y + s.y * yOff, box.max.z * zMult],
+      scale: [s.x * wFrac, s.y * hFrac, s.z * 0.6],
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 // ─── T-SHIRT ──────────────────────────────────────────────────────────────────
+const TSHIRT_NODES = ['Object_2', 'Object_3', 'Object_4', 'Object_5'];
+
 function TShirt3D({ color, designTexture }) {
+  const { nodes } = useGLTF('/t-shirt.glb');
   const outerRef = useRef();
   const swayRef  = useRef();
   useIdleSway(swayRef);
-  const info = useAutoNormalize(outerRef);
-
-  const { scene } = useGLTF('/t-shirt.glb');
-  const cloned = useMemo(() => scene.clone(true), [scene]);
-  useEffect(() => applyColor(cloned, color), [cloned, color]);
+  useAutoNormalize(outerRef);
+  const mat   = useGarmentMat(color);
+  const decal = useMemo(
+    () => geoDecal(nodes?.Object_2?.geometry, { yOff: 0.1, wFrac: 0.55, hFrac: 0.38 }),
+    [nodes],
+  );
 
   return (
     <group ref={swayRef}>
       <group ref={outerRef}>
-        <primitive object={cloned} />
+        {TSHIRT_NODES.map((name) => {
+          const geo = nodes?.[name]?.geometry;
+          if (!geo) return null;
+          return (
+            <mesh key={name} geometry={geo} material={mat} castShadow receiveShadow>
+              {designTexture && name === 'Object_2' && (
+                <Decal
+                  position={decal.pos}
+                  scale={decal.scale}
+                  map={designTexture}
+                  depthTest={false}
+                  polygonOffsetFactor={-10}
+                />
+              )}
+            </mesh>
+          );
+        })}
       </group>
-      {designTexture && <DesignOverlay {...info} texture={designTexture} sizeMultiplier={0.92} />}
     </group>
   );
 }
 
 // ─── POLO ─────────────────────────────────────────────────────────────────────
+const POLO_NODES = [
+  'Object_5','Object_6','Object_7','Object_8',
+  'Object_9','Object_10','Object_11','Object_12',
+];
+
 function Polo3D({ color, designTexture }) {
+  const { nodes } = useGLTF('/polo.glb');
   const outerRef = useRef();
   const swayRef  = useRef();
   useIdleSway(swayRef);
-  const info = useAutoNormalize(outerRef);
-
-  const { scene } = useGLTF('/polo.glb');
-  const cloned = useMemo(() => scene.clone(true), [scene]);
-  useEffect(() => applyColor(cloned, color), [cloned, color]);
+  useAutoNormalize(outerRef);
+  const mat   = useGarmentMat(color);
+  // Left-chest: smaller logo, upper-left area (classic polo placement)
+  const decal = useMemo(
+    () => geoDecal(nodes?.Object_5?.geometry, {
+      xOff: -0.14, yOff: 0.22, zMult: 0.92, wFrac: 0.28, hFrac: 0.20,
+    }),
+    [nodes],
+  );
 
   return (
     <group ref={swayRef}>
       <group ref={outerRef}>
-        <primitive object={cloned} />
+        {POLO_NODES.map((name) => {
+          const geo = nodes?.[name]?.geometry;
+          if (!geo) return null;
+          return (
+            <mesh key={name} geometry={geo} material={mat} castShadow receiveShadow>
+              {designTexture && name === 'Object_5' && (
+                <Decal
+                  position={decal.pos}
+                  scale={decal.scale}
+                  map={designTexture}
+                  depthTest={false}
+                  polygonOffsetFactor={-10}
+                />
+              )}
+            </mesh>
+          );
+        })}
       </group>
-      {designTexture && (
-        <mesh position={[-info.halfW * 0.3, 0.08, info.frontZ]} renderOrder={1}>
-          <planeGeometry args={[info.halfW * 1.0, info.halfH * 1.0]} />
-          <meshBasicMaterial map={designTexture} transparent alphaTest={0.04} depthTest={false} depthWrite={false} />
-        </mesh>
-      )}
     </group>
   );
 }
 
 // ─── HOODIE ───────────────────────────────────────────────────────────────────
-function Hoodie3D({ color, designTexture }) {
-  const outerRef = useRef();
-  const swayRef  = useRef();
-  useIdleSway(swayRef);
-  const info = useAutoNormalize(outerRef);
+const HOODIE_BODY = 'hoodie_Sweat_Rib_1X1_319gsm_hoodie_0';
+const HOODIE_MAIN = [
+  'hoodie_Rib_2X2_468gsm_hoodie_end_0',
+  HOODIE_BODY,
+  'hoodie_Sweat_hood_Rib_1X1_319gsm_hood_0',
+];
 
-  const { scene } = useGLTF('/hoodie.glb');
-  const cloned = useMemo(() => scene.clone(true), [scene]);
-  useEffect(() => applyColor(cloned, color, ['stitches']), [cloned, color]);
+function Hoodie3D({ color, designTexture }) {
+  const { nodes, scene } = useGLTF('/hoodie.glb');
+  const outerRef  = useRef();
+  const swayRef   = useRef();
+  useIdleSway(swayRef);
+  useAutoNormalize(outerRef);
+  const mat        = useGarmentMat(color);
+  const stitchMat  = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.9 }),
+    [],
+  );
+  const decal = useMemo(
+    () => geoDecal(nodes?.[HOODIE_BODY]?.geometry, { yOff: 0.08, wFrac: 0.55, hFrac: 0.38 }),
+    [nodes],
+  );
+
+  // Clone scene for stitches; hide the main meshes that we render explicitly
+  const stitchClone = useMemo(() => {
+    const clone = scene.clone(true);
+    clone.traverse((node) => {
+      if (!node.isMesh) return;
+      if (HOODIE_MAIN.includes(node.name)) { node.visible = false; return; }
+      node.material = stitchMat;
+    });
+    return clone;
+  }, [scene, stitchMat]);
 
   return (
     <group ref={swayRef}>
       <group ref={outerRef}>
-        <primitive object={cloned} />
+        {HOODIE_MAIN.map((name) => {
+          const geo = nodes?.[name]?.geometry;
+          if (!geo) return null;
+          return (
+            <mesh key={name} geometry={geo} material={mat} castShadow receiveShadow>
+              {designTexture && name === HOODIE_BODY && (
+                <Decal
+                  position={decal.pos}
+                  scale={decal.scale}
+                  map={designTexture}
+                  depthTest={false}
+                  polygonOffsetFactor={-10}
+                />
+              )}
+            </mesh>
+          );
+        })}
+        <primitive object={stitchClone} />
       </group>
-      {designTexture && <DesignOverlay {...info} texture={designTexture} sizeMultiplier={0.88} />}
     </group>
   );
 }
 
-// ─── HAT ──────────────────────────────────────────────────────────────────────
+// ─── HAT — 29 meshes, too complex for Decal; use floating front panel ─────────
 function Hat3D({ color, designTexture }) {
-  const outerRef = useRef();
-  const swayRef  = useRef();
-  useIdleSway(swayRef, 0.35, 0.05);
-  const info = useAutoNormalize(outerRef);
-
   const { scene } = useGLTF('/hat.glb');
-  const cloned = useMemo(() => scene.clone(true), [scene]);
-  useEffect(() => applyColor(cloned, color), [cloned, color]);
+  const outerRef  = useRef();
+  const swayRef   = useRef();
+  useIdleSway(swayRef, 0.35, 0.05);
+  useAutoNormalize(outerRef);
+  const mat = useMemo(
+    () => new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.02 }),
+    [],
+  );
+  useEffect(() => { mat.color.set(color); mat.map = null; mat.needsUpdate = true; }, [color, mat]);
+
+  const cloned = useMemo(() => {
+    const clone = scene.clone(true);
+    clone.traverse((node) => {
+      if (!node.isMesh) return;
+      node.castShadow = true;
+      node.material   = mat;
+    });
+    return clone;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene]);
 
   return (
     <group ref={swayRef}>
@@ -183,17 +257,29 @@ function Hat3D({ color, designTexture }) {
           <primitive object={cloned} />
         </group>
       </group>
+      {/* Front-panel design — placed after auto-normalize, so must use world-space estimate */}
       {designTexture && (
-        <mesh position={[0, 0, info.frontZ]} renderOrder={1}>
-          <planeGeometry args={[info.halfW * 1.6, info.halfH * 1.6]} />
-          <meshBasicMaterial map={designTexture} transparent alphaTest={0.04} depthTest={false} depthWrite={false} />
+        <mesh position={[0, 0.1, 1.9]} renderOrder={2}>
+          <planeGeometry args={[0.85, 0.52]} />
+          <meshBasicMaterial
+            map={designTexture}
+            transparent alphaTest={0.04}
+            depthTest={false} depthWrite={false}
+          />
         </mesh>
       )}
     </group>
   );
 }
 
-// ─── BANNER (custom geometry — no GLB) ───────────────────────────────────────
+// ─── BANNER — custom geometry (no GLB) ────────────────────────────────────────
+function makeBannerShape() {
+  const s = new THREE.Shape();
+  s.moveTo(-1.6, -2.2); s.lineTo(1.6, -2.2);
+  s.lineTo(1.6, 2.2); s.lineTo(-1.6, 2.2); s.lineTo(-1.6, -2.2);
+  return s;
+}
+
 function Banner3D({ color, designTexture }) {
   const group = useRef();
   useFrame(({ clock }) => {
@@ -201,16 +287,10 @@ function Banner3D({ color, designTexture }) {
     group.current.rotation.z = Math.sin(clock.elapsedTime * 0.55) * 0.022;
     group.current.rotation.y = Math.sin(clock.elapsedTime * 0.35) * 0.038;
   });
-
-  const bannerShape = useMemo(() => {
-    const s = new THREE.Shape();
-    s.moveTo(-1.6, -2.2); s.lineTo(1.6, -2.2);
-    s.lineTo(1.6, 2.2); s.lineTo(-1.6, 2.2); s.lineTo(-1.6, -2.2);
-    return s;
-  }, []);
-  const bannerGeo = useMemo(() => new THREE.ExtrudeGeometry(bannerShape, {
-    depth: 0.055, bevelEnabled: true, bevelThickness: 0.018, bevelSize: 0.012, bevelSegments: 2,
-  }), [bannerShape]);
+  const bannerGeo = useMemo(() => new THREE.ExtrudeGeometry(makeBannerShape(), {
+    depth: 0.055, bevelEnabled: true,
+    bevelThickness: 0.018, bevelSize: 0.012, bevelSegments: 2,
+  }), []);
 
   return (
     <group ref={group}>
@@ -241,20 +321,16 @@ function Banner3D({ color, designTexture }) {
       ))}
       <mesh position={[0, 0, 0.06]}>
         <planeGeometry args={[2.9, 4.05]} />
-        {designTexture ? (
-          <meshBasicMaterial map={designTexture} transparent alphaTest={0.04} />
-        ) : (
-          <meshStandardMaterial
-            color={new THREE.Color(color).offsetHSL(0, 0.06, 0.09).getStyle()}
-            roughness={0.9} transparent opacity={0.3}
-          />
-        )}
+        {designTexture
+          ? <meshBasicMaterial map={designTexture} transparent alphaTest={0.04} />
+          : <meshStandardMaterial color={new THREE.Color(color).offsetHSL(0, 0.06, 0.09).getStyle()} roughness={0.9} transparent opacity={0.3} />
+        }
       </mesh>
     </group>
   );
 }
 
-// ─── Product registry ─────────────────────────────────────────────────────────
+// ─── Scene contents ───────────────────────────────────────────────────────────
 const PRODUCT_MAP = {
   tshirt: TShirt3D,
   polo:   Polo3D,
@@ -263,25 +339,21 @@ const PRODUCT_MAP = {
   banner: Banner3D,
 };
 
-// ─── Scene — with texture ─────────────────────────────────────────────────────
 function SceneWithTexture({ product, color, designImage, customRotation, greyMode }) {
   const texture = useTexture(designImage);
   const Comp    = PRODUCT_MAP[product] || TShirt3D;
-  const resolvedColor = greyMode ? GREY : color;
   return (
     <group rotation={[0, (customRotation * Math.PI) / 180, 0]}>
-      <Comp color={resolvedColor} designTexture={texture} />
+      <Comp color={greyMode ? GREY : color} designTexture={texture} />
     </group>
   );
 }
 
-// ─── Scene — no texture ───────────────────────────────────────────────────────
 function SceneNoTexture({ product, color, customRotation, greyMode }) {
   const Comp = PRODUCT_MAP[product] || TShirt3D;
-  const resolvedColor = greyMode ? GREY : color;
   return (
     <group rotation={[0, (customRotation * Math.PI) / 180, 0]}>
-      <Comp color={resolvedColor} designTexture={null} />
+      <Comp color={greyMode ? GREY : color} designTexture={null} />
     </group>
   );
 }
@@ -292,16 +364,12 @@ export default function Product3DViewer({
   designImage    = null,
   garmentColor   = '#ffffff',
   rotation: customRotation = 0,
-  greyMode       = false,        // ← grey garment + design overlay (mockup mode)
+  greyMode       = false,
 }) {
   const camZ = product === 'banner' ? 11 : product === 'hat' ? 7 : 8;
 
   return (
-    <div
-      className="w-full relative rounded-xl overflow-hidden bg-gray-100"
-      style={{ minHeight: 480 }}
-    >
-      {/* Grey mode badge */}
+    <div className="w-full relative rounded-xl overflow-hidden bg-gray-100" style={{ minHeight: 480 }}>
       {greyMode && (
         <div className="absolute top-3 left-3 z-10 bg-black/60 text-white text-xs px-3 py-1 rounded-full pointer-events-none">
           Mockup Mode
@@ -309,45 +377,24 @@ export default function Product3DViewer({
       )}
 
       <Canvas
-        shadows
-        dpr={[1, 2]}
+        shadows dpr={[1, 2]}
         camera={{ position: [0, 0.4, camZ], fov: 46 }}
         style={{ width: '100%', height: 480 }}
       >
         <ambientLight intensity={0.55} />
-        <directionalLight
-          position={[4, 8, 6]} intensity={1.3}
-          castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024}
-        />
+        <directionalLight position={[4, 8, 6]} intensity={1.3} castShadow
+          shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
         <directionalLight position={[-5, 3, -3]} intensity={0.4} />
         <directionalLight position={[0, -2, -5]} intensity={0.18} />
 
         <Suspense fallback={null}>
-          {designImage ? (
-            <SceneWithTexture
-              product={product}
-              color={garmentColor}
-              designImage={designImage}
-              customRotation={customRotation}
-              greyMode={greyMode}
-            />
-          ) : (
-            <SceneNoTexture
-              product={product}
-              color={garmentColor}
-              customRotation={customRotation}
-              greyMode={greyMode}
-            />
-          )}
+          {designImage
+            ? <SceneWithTexture product={product} color={garmentColor} designImage={designImage} customRotation={customRotation} greyMode={greyMode} />
+            : <SceneNoTexture   product={product} color={garmentColor} customRotation={customRotation} greyMode={greyMode} />
+          }
         </Suspense>
 
-        <OrbitControls
-          enablePan={false}
-          enableZoom
-          minDistance={3}
-          maxDistance={20}
-          maxPolarAngle={Math.PI * 0.88}
-        />
+        <OrbitControls enablePan={false} enableZoom minDistance={3} maxDistance={20} maxPolarAngle={Math.PI * 0.88} />
       </Canvas>
 
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-4 py-1.5 rounded-full pointer-events-none select-none">
