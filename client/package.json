@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
-    "@react-three/drei": "^10.7.7",
+    "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.17.10",
     "@stripe/stripe-js": "^3.4.1",
     "lucide-react": "^0.546.0",
