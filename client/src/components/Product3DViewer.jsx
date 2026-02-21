@@ -1,9 +1,27 @@
 import React, {
-  useRef, useMemo, useEffect, useLayoutEffect, Suspense,
+  useRef, useMemo, useEffect, useLayoutEffect, Suspense, Component,
 } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, useTexture, Decal } from '@react-three/drei';
 import * as THREE from 'three';
+
+// ─── Error boundary — catches WebGL/Three.js crashes without killing the page ─
+class CanvasErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { crashed: false }; }
+  static getDerivedStateFromError() { return { crashed: true }; }
+  componentDidCatch(err) { console.warn('[Product3DViewer] Canvas error:', err.message); }
+  render() {
+    if (this.state.crashed) {
+      return (
+        <div className="w-full flex items-center justify-center bg-gray-100 rounded-xl text-gray-400 text-sm"
+          style={{ height: 480 }}>
+          3D preview unavailable — try refreshing the page.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── Draco decoder — required for Draco-compressed GLBs ──────────────────────
 // drei's useGLTF handles Draco automatically; point it at Google's stable CDN.
@@ -373,6 +391,7 @@ export default function Product3DViewer({
   const camZ = product === 'banner' ? 11 : product === 'hat' ? 7 : 8;
 
   return (
+    <CanvasErrorBoundary>
     <div className="w-full relative rounded-xl overflow-hidden bg-gray-100" style={{ minHeight: 480 }}>
       {greyMode && (
         <div className="absolute top-3 left-3 z-10 bg-black/60 text-white text-xs px-3 py-1 rounded-full pointer-events-none">
@@ -384,6 +403,7 @@ export default function Product3DViewer({
         shadows dpr={[1, 2]}
         camera={{ position: [0, 0.4, camZ], fov: 46 }}
         style={{ width: '100%', height: 480 }}
+        gl={{ preserveDrawingBuffer: true, antialias: true }}
       >
         <ambientLight intensity={0.55} />
         <directionalLight position={[4, 8, 6]} intensity={1.3} castShadow
@@ -405,5 +425,6 @@ export default function Product3DViewer({
         🖱 Drag to rotate · Scroll to zoom
       </div>
     </div>
+    </CanvasErrorBoundary>
   );
 }
