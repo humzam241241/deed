@@ -1,0 +1,38 @@
+[
+  {
+    "question": "What are your minimum order quantities?",
+    "answer": "Our minimum order is 12 pieces for standard items. For custom dye sublimation or all-over prints, we require a minimum of 24 pieces. Bulk discounts start at 50+ items."
+  },
+  {
+    "question": "How long does production take?",
+    "answer": "Standard production time is 2-3 weeks after design approval. Rush orders may be available for an additional fee, with delivery in as little as 7-10 business days.",
+    "image": "/faq/timeline.jpg"
+  },
+  {
+    "question": "What fabric options do you offer?",
+    "answer": "We offer premium cotton (180-220 GSM), cotton/poly blends, 100% polyester performance fabrics, and sustainable options including recycled polyester and organic cotton.",
+    "image": "/faq/fabrics.jpg"
+  },
+  {
+    "question": "Can I upload my own design or logo?",
+    "answer": "Yes! You can upload your own designs through our Design Studio. We accept PNG, JPG, SVG, AI, and PSD files. For best results, vector files (SVG/AI) are recommended for logos.",
+    "image": "/faq/upload.jpg"
+  },
+  {
+    "question": "Do you offer design services?",
+    "answer": "Absolutely! Our in-house design team can help bring your ideas to life. Basic design assistance is included, while custom illustrations are available at an additional cost."
+  },
+  {
+    "question": "What is your pricing structure?",
+    "answer": "Pricing depends on quantity, garment type, print method, and design complexity. T-shirts typically range from $15-25 per piece for orders of 24+ items. Contact us for a custom quote."
+  },
+  {
+    "question": "Do you offer samples before full production?",
+    "answer": "Yes, we can provide pre-production samples for a nominal fee, which is credited toward your final order when you proceed with production.",
+    "image": "/faq/samples.jpg"
+  },
+  {
+    "question": "What payment methods do you accept?",
+    "answer": "We accept credit cards, PayPal, e-transfers, and direct bank transfers. For orders over $1,000, we require a 50% deposit, with the balance due before shipping."
+  }
+]

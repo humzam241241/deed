@@ -1,0 +1,17 @@
+[
+  {
+    "title": "Pick your canvas",
+    "description": "Choose from our premium apparel options: tees, hoodies, polos, and more.",
+    "icon": "shirt"
+  },
+  {
+    "title": "Get creative",
+    "description": "Upload your design or work with our team to create something unique.",
+    "icon": "sparkles"
+  },
+  {
+    "title": "Make them proud",
+    "description": "Receive high-quality custom apparel that your team will love to wear.",
+    "icon": "smile"
+  }
+]
