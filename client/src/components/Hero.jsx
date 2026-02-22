@@ -94,7 +94,7 @@ export default function Hero() {
           const next = document.querySelector('section + section, section ~ section');
           if (next) next.scrollIntoView({ behavior: 'instant' });
         }}
-        className="flex justify-center pb-4 w-full animate-bounce cursor-pointer"
+        className="flex justify-center pb-4 w-full animate-bounce cursor-pointer bg-transparent border-0 outline-none focus:outline-none"
         aria-label="Scroll down"
       >
         <ChevronDown className="w-6 h-6 text-gray-400 hover:text-primary transition-colors" />
