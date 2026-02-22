@@ -5,7 +5,7 @@ import { Users, Briefcase, ArrowRight, ChevronDown } from 'lucide-react';
 export default function Hero() {
   return (
     /* 90vh — enough so the Steps section peeks below the fold */
-    <section className="bg-white flex flex-col justify-center" style={{ minHeight: '90vh' }}>
+    <section className="bg-white flex flex-col justify-center" style={{ minHeight: '82vh' }}>
       <div className="container mx-auto px-4 py-12 flex-1 flex flex-col justify-center">
         <div className="flex flex-col md:flex-row items-center gap-10">
 
