@@ -335,7 +335,7 @@ export default function DesignStudio() {
                   
                   <div>
                     <div className="flex justify-between mb-2">
-                      <label className="text-sm text-gray-600">Rotation</label>
+                      <label className="text-sm text-gray-600">Design Rotation</label>
                       <span className="text-sm font-medium">{rotation}°</span>
                     </div>
                     <input
@@ -465,7 +465,8 @@ export default function DesignStudio() {
                     designImage={designImage}
                     garmentColor={garmentColor}
                     printLocation={printLocation}
-                    rotation={rotation}
+                    designSize={designSize}
+                    designRotation={rotation}
                     greyMode={greyMode}
                   />
                 ) : (
