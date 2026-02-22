@@ -98,33 +98,31 @@ export default function Products() {
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-12">Product Categories</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* 4 products in a single row on large screens */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
             {categories.map((category) => (
-              <div 
+              <div
                 key={category.name}
-                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
               >
-                <div className="h-48 bg-gray-100 relative">
-                  <img 
-                    src={category.image} 
+                <div className="h-40 bg-gray-100 relative">
+                  <img
+                    src={category.image}
                     alt={category.name}
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       e.target.onerror = null;
-                      e.target.src = `https://placehold.co/800x400/f1f5f9/64748b?text=${category.name}`;
+                      e.target.src = `https://placehold.co/400x300/f1f5f9/64748b?text=${category.name}`;
                     }}
                   />
-                  <div className="absolute top-4 left-4 bg-white rounded-full p-2">
-                    <category.icon className="w-6 h-6 text-primary" />
+                  <div className="absolute top-3 left-3 bg-white rounded-full p-2 shadow-sm">
+                    <category.icon className="w-5 h-5 text-primary" />
                   </div>
                 </div>
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold mb-2">{category.name}</h3>
-                  <p className="text-gray-600 mb-4">{category.description}</p>
-                  <Link 
-                    to={category.link} 
-                    className="text-primary font-medium hover:underline"
-                  >
+                <div className="p-4 flex flex-col flex-1">
+                  <h3 className="text-base font-semibold mb-1">{category.name}</h3>
+                  <p className="text-gray-600 text-sm mb-3 flex-1">{category.description}</p>
+                  <Link to={category.link} className="text-primary font-medium text-sm hover:underline">
                     View options →
                   </Link>
                 </div>
@@ -142,7 +140,7 @@ export default function Products() {
             We offer various printing techniques to ensure your design looks its best
           </p>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {printingMethods.map((method) => (
               <div 
                 key={method.name}

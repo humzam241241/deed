@@ -93,45 +93,44 @@ export default function OurTeam() {
       {/* Team members */}
       <section className="py-16">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
             {teamMembers.map((member) => (
-              <div 
+              <div
                 key={member.name}
-                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center text-center"
               >
-                <div className="h-64 bg-gray-100">
-                  <img 
-                    src={member.image} 
+                {/* Circular avatar */}
+                <div className="w-28 h-28 rounded-full overflow-hidden ring-4 ring-primary/20 mb-4 flex-shrink-0">
+                  <img
+                    src={member.image}
                     alt={member.name}
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       e.target.onerror = null;
-                      e.target.src = `https://placehold.co/400x400/f1f5f9/64748b?text=${member.name.split(' ')[0]}`;
+                      e.target.src = `https://placehold.co/200x200/e0e7ff/4f46e5?text=${member.name.split(' ').map(n => n[0]).join('')}`;
                     }}
                   />
                 </div>
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold mb-1">{member.name}</h3>
-                  <p className="text-primary font-medium mb-3">{member.role}</p>
-                  <p className="text-gray-600 mb-4">{member.bio}</p>
-                  <div className="flex space-x-3">
-                    <a 
-                      href={`mailto:${member.email}`}
-                      className="text-gray-500 hover:text-primary transition-colors"
-                      aria-label={`Email ${member.name}`}
-                    >
-                      <Mail className="w-5 h-5" />
-                    </a>
-                    <a 
-                      href={member.linkedin}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-gray-500 hover:text-primary transition-colors"
-                      aria-label={`${member.name}'s LinkedIn profile`}
-                    >
-                      <Linkedin className="w-5 h-5" />
-                    </a>
-                  </div>
+                <h3 className="text-lg font-semibold mb-0.5">{member.name}</h3>
+                <p className="text-primary font-medium text-sm mb-3">{member.role}</p>
+                <p className="text-gray-600 text-sm mb-4 line-clamp-3">{member.bio}</p>
+                <div className="flex space-x-3 mt-auto">
+                  <a
+                    href={`mailto:${member.email}`}
+                    className="text-gray-400 hover:text-primary transition-colors"
+                    aria-label={`Email ${member.name}`}
+                  >
+                    <Mail className="w-5 h-5" />
+                  </a>
+                  <a
+                    href={member.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-primary transition-colors"
+                    aria-label={`${member.name}'s LinkedIn`}
+                  >
+                    <Linkedin className="w-5 h-5" />
+                  </a>
                 </div>
               </div>
             ))}
