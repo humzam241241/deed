@@ -20,9 +20,15 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
 ];
+
+// Matches any Vercel preview deployment for this project
+const vercelPreviewPattern = /^https:\/\/deed-[a-z0-9]+-humzam241-2402s-projects\.vercel\.app$/;
+
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    if (vercelPreviewPattern.test(origin)) return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
