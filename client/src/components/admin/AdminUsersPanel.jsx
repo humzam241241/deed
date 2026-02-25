@@ -17,7 +17,7 @@ export default function AdminUsersPanel() {
     const [usersRes, clubsRes] = await Promise.all([
       supabase
         .from('users')
-        .select('id, role, club_id, is_exec_approved, created_at, clubs(name)')
+        .select('id, email, role, club_id, is_exec_approved, created_at, clubs(name)')
         .order('created_at', { ascending: false }),
       supabase.from('clubs').select('id, name').order('name'),
     ]);
@@ -60,16 +60,12 @@ export default function AdminUsersPanel() {
         </button>
       </div>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-xs text-blue-700">
-        User emails are managed in the Supabase Auth dashboard. Users appear here after their first sign-in.
-      </div>
-
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['User ID', 'Role', 'Club', 'Exec Approved', 'Actions'].map(h => (
+                {['Email', 'Role', 'Club', 'Exec Approved', 'Actions'].map(h => (
                   <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -88,11 +84,10 @@ export default function AdminUsersPanel() {
               )}
               {users.map(u => (
                 <tr key={u.id} className={`hover:bg-gray-50/70 ${saving === u.id ? 'opacity-60' : ''}`}>
-                  {/* User ID */}
+                  {/* Email */}
                   <td className="px-5 py-3.5">
-                    <span className="font-mono text-xs text-gray-500" title={u.id}>
-                      {u.id.slice(0, 8)}…
-                    </span>
+                    <div className="font-medium text-gray-800 text-sm">{u.email ?? '—'}</div>
+                    <div className="font-mono text-xs text-gray-400 mt-0.5" title={u.id}>{u.id.slice(0, 8)}…</div>
                   </td>
 
                   {/* Role dropdown */}
