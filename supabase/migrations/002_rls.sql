@@ -110,23 +110,24 @@ CREATE POLICY "admin_listings_all" ON listings
   USING (current_user_role() = 'admin')
   WITH CHECK (current_user_role() = 'admin');
 
--- Club exec (approved): insert listings for their club
+-- Club exec: insert listings for their club
+-- Approval not required to submit — execs can submit pending listings
+-- which the admin then reviews and approves.
 CREATE POLICY "exec_listings_insert" ON listings
   FOR INSERT
   TO authenticated
   WITH CHECK (
     current_user_role() = 'club_exec'
-    AND current_exec_approved() = true
     AND club_id = current_user_club_id()
+    AND status = 'pending'
   );
 
--- Club exec (approved): read their club's listings
+-- Club exec: read their club's listings (approval not required to see own listings)
 CREATE POLICY "exec_listings_read" ON listings
   FOR SELECT
   TO authenticated
   USING (
     current_user_role() = 'club_exec'
-    AND current_exec_approved() = true
     AND club_id = current_user_club_id()
   );
 
