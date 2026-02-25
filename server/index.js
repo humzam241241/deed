@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 4242;
 // ── CORS ─────────────────────────────────────────────────────────────────────
 const allowedOrigins = [
   process.env.CLIENT_URL ?? 'http://localhost:3000',
+  'https://deed-jet.vercel.app',          // production domain
   'http://localhost:3000',
   'http://localhost:5173',
 ];
