@@ -15,6 +15,7 @@ export default function DesignStudio() {
   const [printLocation, setPrintLocation] = useState('front-center');
   const [designSize, setDesignSize] = useState(0.8);
   const [rotation, setRotation] = useState(0);
+  const [selectedSide, setSelectedSide] = useState('front'); // "front" | "back"
   const [designName, setDesignName] = useState('My Design');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [savedDesigns, setSavedDesigns] = useState([]);
@@ -57,6 +58,7 @@ export default function DesignStudio() {
       const reader = new FileReader();
       reader.onload = (event) => {
         setDesignImage(event.target.result);
+        setRotation(0); // reset rotation on new upload
       };
       reader.readAsDataURL(file);
     }
@@ -340,8 +342,8 @@ export default function DesignStudio() {
                     </div>
                     <input
                       type="range"
-                      min="0"
-                      max="360"
+                      min="-90"
+                      max="90"
                       value={rotation}
                       onChange={(e) => setRotation(parseInt(e.target.value))}
                       className="w-full accent-primary"
@@ -350,16 +352,23 @@ export default function DesignStudio() {
 
                   <div className="flex gap-2 pt-2">
                     <button
-                      onClick={() => setRotation((rotation - 90 + 360) % 360)}
+                      onClick={() => setRotation(r => Math.max(-90, r - 45))}
                       className="flex-1 px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-                      title="Rotate left 90°"
+                      title="Rotate left 45°"
                     >
                       <RotateCw className="w-4 h-4 transform scale-x-[-1]" />
                     </button>
                     <button
-                      onClick={() => setRotation((rotation + 90) % 360)}
+                      onClick={() => setRotation(0)}
+                      className="flex-1 px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-xs font-medium"
+                      title="Reset rotation"
+                    >
+                      0°
+                    </button>
+                    <button
+                      onClick={() => setRotation(r => Math.min(90, r + 45))}
                       className="flex-1 px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-                      title="Rotate right 90°"
+                      title="Rotate right 45°"
                     >
                       <RotateCw className="w-4 h-4" />
                     </button>
@@ -409,6 +418,24 @@ export default function DesignStudio() {
               <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
                 <h3 className="font-semibold text-lg">Live Preview</h3>
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* Front / Back side selector */}
+                  {view3D && (
+                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                      <button
+                        onClick={() => setSelectedSide('front')}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${selectedSide === 'front' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        Front
+                      </button>
+                      <button
+                        onClick={() => setSelectedSide('back')}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${selectedSide === 'back' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        Back
+                      </button>
+                    </div>
+                  )}
+
                   {/* Grey / Mockup mode toggle */}
                   {view3D && (
                     <button
@@ -468,6 +495,7 @@ export default function DesignStudio() {
                     designSize={designSize}
                     designRotation={rotation}
                     greyMode={greyMode}
+                    selectedSide={selectedSide}
                   />
                 ) : (
                   <div className="bg-gray-50 rounded-xl p-4">

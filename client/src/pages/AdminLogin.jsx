@@ -1,53 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-react';
-
-// Hardcoded admin credentials — swap with Supabase Auth when ready
-const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'apparel2024';
-
-export function isAdminAuthenticated() {
-  return sessionStorage.getItem('adminAuth') === 'true';
-}
-
-export function adminLogout() {
-  sessionStorage.removeItem('adminAuth');
-}
+import { Lock, Mail, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext.jsx';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
-  const [form, setForm]         = useState({ username: '', password: '' });
+  const { signIn, user, userRole, loading } = useAuth();
+
+  const [form, setForm]         = useState({ email: '', password: '' });
   const [showPass, setShowPass] = useState(false);
   const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Already logged in → redirect
+  // Already authenticated as admin → redirect
   useEffect(() => {
-    if (isAdminAuthenticated()) navigate('/admin');
-  }, [navigate]);
+    if (!loading && user && userRole === 'admin') {
+      navigate('/admin');
+    }
+  }, [user, userRole, loading, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
-
-    // Simulate async auth (makes it easy to swap with Supabase later)
-    await new Promise(r => setTimeout(r, 600));
-
-    if (form.username === ADMIN_USER && form.password === ADMIN_PASS) {
-      sessionStorage.setItem('adminAuth', 'true');
-      navigate('/admin');
-    } else {
-      setError('Invalid username or password.');
+    setSubmitting(true);
+    try {
+      await signIn(form.email, form.password);
+      // Role check happens in useEffect above after AuthContext updates
+    } catch (err) {
+      setError(err.message ?? 'Invalid email or password.');
+    } finally {
+      setSubmitting(false);
     }
-    setLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       {/* Background pattern */}
-      <div className="absolute inset-0 opacity-5"
-        style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '32px 32px' }}
+      <div
+        className="absolute inset-0 opacity-5"
+        style={{
+          backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+          backgroundSize: '32px 32px',
+        }}
       />
 
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -70,16 +64,16 @@ export default function AdminLogin() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Username */}
+            {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Username</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
-                  type="text"
-                  value={form.username}
-                  onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                  placeholder="admin"
+                  type="email"
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="admin@example.com"
                   required
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                 />
@@ -111,10 +105,10 @@ export default function AdminLogin() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={submitting}
               className="w-full bg-gray-900 text-white py-3 rounded-lg font-medium text-sm hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Signing in…' : 'Sign In'}
+              {submitting ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
 

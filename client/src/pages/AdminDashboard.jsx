@@ -1,24 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LogOut, Package, DollarSign, Clock, CheckCircle2, TrendingUp,
-  Search, Filter, ChevronDown, Download, RefreshCw, BarChart2,
-  Shirt, Users, Calendar,
+  Search, Download, RefreshCw, BarChart2, Shirt, Users, Calendar,
+  ExternalLink, AlertTriangle, Plus, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import { isAdminAuthenticated, adminLogout } from './AdminLogin';
-import { MOCK_ORDERS, getStats } from '../data/mockOrders';
-
-// ─── Protected wrapper ────────────────────────────────────────────────────────
-export default function AdminDashboard() {
-  const navigate = useNavigate();
-
-  if (!isAdminAuthenticated()) {
-    navigate('/admin/login');
-    return null;
-  }
-
-  return <DashboardContent navigate={navigate} />;
-}
+import { useAuth } from '../contexts/AuthContext.jsx';
+import supabase from '../lib/supabase.js';
+import { refundOrder, fetchAnalytics, createConnectedAccount, getOnboardingLink } from '../lib/api.js';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -26,24 +15,24 @@ const STATUS_STYLES = {
   'in-progress': 'bg-blue-100 text-blue-700',
   pending:       'bg-amber-100 text-amber-700',
   cancelled:     'bg-red-100 text-red-700',
+  approved:      'bg-green-100 text-green-700',
+  closed:        'bg-gray-100 text-gray-600',
+  none:          'bg-gray-100 text-gray-500',
+  partial:       'bg-amber-100 text-amber-700',
+  full:          'bg-red-100 text-red-700',
 };
-function StatusBadge({ status }) {
+
+function Badge({ value }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_STYLES[status] || 'bg-gray-100 text-gray-600'}`}>
-      {status}
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_STYLES[value] || 'bg-gray-100 text-gray-600'}`}>
+      {value}
     </span>
   );
 }
 
 // ─── KPI card ─────────────────────────────────────────────────────────────────
 function KpiCard({ icon: Icon, label, value, sub, color = 'blue' }) {
-  const ring = {
-    blue:   'bg-blue-50 text-blue-600',
-    green:  'bg-green-50 text-green-600',
-    amber:  'bg-amber-50 text-amber-600',
-    purple: 'bg-purple-50 text-purple-600',
-  }[color];
-
+  const ring = { blue: 'bg-blue-50 text-blue-600', green: 'bg-green-50 text-green-600', amber: 'bg-amber-50 text-amber-600', purple: 'bg-purple-50 text-purple-600' }[color];
   return (
     <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
       <div className="flex items-start justify-between">
@@ -52,85 +41,154 @@ function KpiCard({ icon: Icon, label, value, sub, color = 'blue' }) {
           <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
           {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
         </div>
-        <div className={`p-2.5 rounded-lg ${ring}`}>
-          <Icon className="w-5 h-5" />
-        </div>
+        <div className={`p-2.5 rounded-lg ${ring}`}><Icon className="w-5 h-5" /></div>
       </div>
     </div>
   );
 }
 
-// ─── Simple bar chart (CSS only, no library needed) ───────────────────────────
-function ProductBar({ label, count, total, color }) {
-  const pct = Math.round((count / total) * 100);
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-sm text-gray-600 w-20 shrink-0">{label}</span>
-      <div className="flex-1 bg-gray-100 rounded-full h-2.5">
-        <div className="h-2.5 rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="text-sm font-medium text-gray-700 w-14 text-right">{count} orders</span>
-    </div>
-  );
-}
-
-const PRODUCT_COLORS = {
-  'T-Shirt': '#3b82f6',
-  'Polo':    '#10b981',
-  'Hoodie':  '#8b5cf6',
-  'Hat':     '#f59e0b',
-  'Banner':  '#ef4444',
-};
+const fmt = (n) => `$${Number(n ?? 0).toLocaleString('en-CA', { minimumFractionDigits: 2 })}`;
 
 // ─── Main dashboard ────────────────────────────────────────────────────────────
-function DashboardContent({ navigate }) {
-  const [orders, setOrders]       = useState(MOCK_ORDERS);
-  const [search, setSearch]       = useState('');
-  const [statusFilter, setStatus] = useState('all');
-  const [productFilter, setProduct] = useState('all');
-  const [sortBy, setSortBy]       = useState('date');
-  const [showOrderId, setShowOrderId] = useState(null);
+export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
-  const stats = useMemo(() => getStats(orders), [orders]);
+  // ── Data state ────────────────────────────────────────────────────────────
+  const [orders, setOrders]       = useState([]);
+  const [listings, setListings]   = useState([]);
+  const [clubs, setClubs]         = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [error, setError]         = useState('');
 
-  const filtered = useMemo(() => {
-    let list = [...orders];
-    if (search)        list = list.filter(o =>
-      o.customer.toLowerCase().includes(search.toLowerCase()) ||
-      o.id.toLowerCase().includes(search.toLowerCase()) ||
-      o.design.toLowerCase().includes(search.toLowerCase()),
-    );
-    if (statusFilter !== 'all')  list = list.filter(o => o.status === statusFilter);
-    if (productFilter !== 'all') list = list.filter(o => o.product === productFilter);
-    list.sort((a, b) => {
-      if (sortBy === 'date')    return new Date(b.date) - new Date(a.date);
-      if (sortBy === 'amount')  return b.amount - a.amount;
-      if (sortBy === 'qty')     return b.qty - a.qty;
-      return 0;
-    });
-    return list;
-  }, [orders, search, statusFilter, productFilter, sortBy]);
+  // ── UI state ──────────────────────────────────────────────────────────────
+  const [tab, setTab]                 = useState('orders'); // 'orders' | 'listings' | 'clubs' | 'analytics'
+  const [search, setSearch]           = useState('');
+  const [refundingId, setRefundingId] = useState(null);
+  const [expandedOrder, setExpandedOrder] = useState(null);
+  const [connectingClub, setConnectingClub] = useState(null);
 
-  const handleLogout = () => {
-    adminLogout();
-    navigate('/admin/login');
+  const loadData = useCallback(async () => {
+    setDataLoading(true);
+    setError('');
+    try {
+      const [ordersRes, listingsRes, clubsRes] = await Promise.all([
+        supabase.from('orders').select('*, listings(title, club_id, price, clubs(name))').order('created_at', { ascending: false }),
+        supabase.from('listings').select('*, clubs(name, stripe_account_id)').order('created_at', { ascending: false }),
+        supabase.from('clubs').select('*').order('name'),
+      ]);
+
+      if (ordersRes.error) throw new Error(ordersRes.error.message);
+      if (listingsRes.error) throw new Error(listingsRes.error.message);
+      if (clubsRes.error) throw new Error(clubsRes.error.message);
+
+      setOrders(ordersRes.data ?? []);
+      setListings(listingsRes.data ?? []);
+      setClubs(clubsRes.data ?? []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDataLoading(false);
+    }
+  }, []);
+
+  const loadAnalytics = useCallback(async () => {
+    try {
+      const data = await fetchAnalytics();
+      setAnalytics(data);
+    } catch (err) {
+      setError(err.message);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { if (tab === 'analytics') loadAnalytics(); }, [tab, loadAnalytics]);
+
+  const handleLogout = async () => { await signOut(); navigate('/admin/login'); };
+
+  // ── Approve listing ───────────────────────────────────────────────────────
+  const approveListing = async (id) => {
+    const { error: err } = await supabase.from('listings').update({ status: 'approved' }).eq('id', id);
+    if (err) return setError(err.message);
+    setListings(prev => prev.map(l => l.id === id ? { ...l, status: 'approved' } : l));
   };
 
+  const closeListing = async (id) => {
+    const { error: err } = await supabase.from('listings').update({ status: 'closed' }).eq('id', id);
+    if (err) return setError(err.message);
+    setListings(prev => prev.map(l => l.id === id ? { ...l, status: 'closed' } : l));
+  };
+
+  // ── Refund order ──────────────────────────────────────────────────────────
+  const handleRefund = async (order_id, type = 'full') => {
+    if (!window.confirm(`Issue ${type} refund for this order?`)) return;
+    setRefundingId(order_id);
+    try {
+      await refundOrder(order_id, type);
+      alert('Refund initiated. Status will update via webhook shortly.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRefundingId(null);
+    }
+  };
+
+  // ── Stripe Connect ────────────────────────────────────────────────────────
+  const handleCreateStripeAccount = async (club_id) => {
+    setConnectingClub(club_id);
+    try {
+      await createConnectedAccount(club_id);
+      await loadData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setConnectingClub(null);
+    }
+  };
+
+  const handleOnboardingLink = async (club_id) => {
+    setConnectingClub(club_id);
+    try {
+      const { url } = await getOnboardingLink(club_id);
+      window.open(url, '_blank');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setConnectingClub(null);
+    }
+  };
+
+  // ── CSV export ────────────────────────────────────────────────────────────
   const exportCSV = () => {
-    const header = 'Order ID,Customer,Email,Product,Qty,Amount,Status,Date,Design\n';
-    const rows   = orders.map(o =>
-      `${o.id},"${o.customer}",${o.email},${o.product},${o.qty},${o.amount.toFixed(2)},${o.status},${o.date},"${o.design}"`,
+    const header = 'Order ID,Buyer,Email,Listing,Qty,Total Paid,Refund Status,Refund Amount,Created\n';
+    const rows = orders.map(o =>
+      `${o.id},"${o.buyer_name}",${o.buyer_email},"${o.listings?.title ?? ''}",${o.quantity},${o.total_paid},${o.refund_status},${o.refund_amount},${o.created_at}`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = 'orders.csv'; a.click();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'orders.csv'; a.click();
     URL.revokeObjectURL(url);
   };
 
-  const updateStatus = (id, newStatus) => {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
-  };
+  // ── Filtered data ─────────────────────────────────────────────────────────
+  const filteredOrders = useMemo(() =>
+    orders.filter(o =>
+      !search ||
+      o.buyer_name?.toLowerCase().includes(search.toLowerCase()) ||
+      o.buyer_email?.toLowerCase().includes(search.toLowerCase()) ||
+      o.listings?.title?.toLowerCase().includes(search.toLowerCase())
+    ), [orders, search]);
+
+  const filteredListings = useMemo(() =>
+    listings.filter(l =>
+      !search ||
+      l.title?.toLowerCase().includes(search.toLowerCase()) ||
+      l.clubs?.name?.toLowerCase().includes(search.toLowerCase())
+    ), [listings, search]);
+
+  const totalRevenue = orders.reduce((s, o) => s + (o.total_paid ?? 0), 0);
+  const pendingListings = listings.filter(l => l.status === 'pending').length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -147,245 +205,308 @@ function DashboardContent({ navigate }) {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-gray-400">admin</span>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 text-sm text-gray-300 hover:text-white transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign out
+            <span className="text-xs text-gray-400">{user?.email}</span>
+            <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-gray-300 hover:text-white transition-colors">
+              <LogOut className="w-4 h-4" /> Sign out
             </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
-        {/* ── KPI row ──────────────────────────────────────────────────────── */}
+        {/* Error banner */}
+        {error && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            {error}
+            <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-700">✕</button>
+          </div>
+        )}
+
+        {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon={Package}       label="Total Orders"    value={stats.total}           sub={`${stats.completed} completed`}  color="blue"   />
-          <KpiCard icon={DollarSign}    label="Total Revenue"   value={`$${stats.revenue.toLocaleString('en-CA', { minimumFractionDigits: 2 })}`} sub={`avg $${stats.avgOrder.toFixed(0)}/order`} color="green"  />
-          <KpiCard icon={Clock}         label="Pending"         value={stats.pending}         sub="awaiting approval"               color="amber"  />
-          <KpiCard icon={TrendingUp}    label="In Progress"     value={stats.inProgress}      sub="in production"                   color="purple" />
+          <KpiCard icon={Package}    label="Total Orders"    value={orders.length}        sub={`${orders.filter(o => o.refund_status === 'none').length} active`} color="blue" />
+          <KpiCard icon={DollarSign} label="Gross Revenue"   value={fmt(totalRevenue)}    sub="before refunds" color="green" />
+          <KpiCard icon={Clock}      label="Pending Listings" value={pendingListings}      sub="awaiting approval" color="amber" />
+          <KpiCard icon={TrendingUp} label="Active Clubs"    value={clubs.length}         sub="registered" color="purple" />
         </div>
 
-        {/* ── Two-column: product breakdown + top stats ─────────────────────── */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Product breakdown */}
-          <div className="lg:col-span-2 bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <div className="flex items-center gap-2 mb-5">
-              <BarChart2 className="w-5 h-5 text-gray-500" />
-              <h2 className="font-semibold text-gray-800">Orders by Product</h2>
-            </div>
-            <div className="space-y-4">
-              {Object.entries(stats.productCounts)
-                .sort((a, b) => b[1] - a[1])
-                .map(([product, count]) => (
-                  <ProductBar
-                    key={product}
-                    label={product}
-                    count={count}
-                    total={stats.total}
-                    color={PRODUCT_COLORS[product] || '#6b7280'}
-                  />
-                ))}
-            </div>
-          </div>
-
-          {/* Quick stats */}
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 space-y-5">
-            <h2 className="font-semibold text-gray-800">Quick Stats</h2>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 rounded-lg"><Shirt className="w-4 h-4 text-blue-600" /></div>
-                <div>
-                  <p className="text-xs text-gray-500">Top Product</p>
-                  <p className="text-sm font-semibold text-gray-800">{stats.topProduct}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-50 rounded-lg"><Users className="w-4 h-4 text-green-600" /></div>
-                <div>
-                  <p className="text-xs text-gray-500">Unique Clients</p>
-                  <p className="text-sm font-semibold text-gray-800">{new Set(MOCK_ORDERS.map(o => o.email)).size}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-50 rounded-lg"><Calendar className="w-4 h-4 text-purple-600" /></div>
-                <div>
-                  <p className="text-xs text-gray-500">Total Units Ordered</p>
-                  <p className="text-sm font-semibold text-gray-800">{orders.reduce((s, o) => s + o.qty, 0).toLocaleString()}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-50 rounded-lg"><CheckCircle2 className="w-4 h-4 text-amber-600" /></div>
-                <div>
-                  <p className="text-xs text-gray-500">Completion Rate</p>
-                  <p className="text-sm font-semibold text-gray-800">{Math.round((stats.completed / stats.total) * 100)}%</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-gray-100">
-              <p className="text-xs text-gray-400 text-center">
-                💡 Connect Supabase to get live data
-              </p>
-            </div>
-          </div>
+        {/* Tabs */}
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+          {[
+            { key: 'orders', label: 'Orders' },
+            { key: 'listings', label: 'Listings' },
+            { key: 'clubs', label: 'Clubs' },
+            { key: 'analytics', label: 'Analytics' },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              {t.label}
+              {t.key === 'listings' && pendingListings > 0 && (
+                <span className="ml-1.5 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5">{pendingListings}</span>
+              )}
+            </button>
+          ))}
         </div>
 
-        {/* ── Orders table ─────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* Table header / filters */}
-          <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
-            <h2 className="font-semibold text-gray-800 mr-auto">All Orders</h2>
-
-            {/* Search */}
-            <div className="relative">
+        {/* Search + refresh */}
+        {tab !== 'analytics' && (
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-40"
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
               />
             </div>
-
-            {/* Status filter */}
-            <select
-              value={statusFilter}
-              onChange={e => setStatus(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-gray-900"
-            >
-              <option value="all">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="in-progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-
-            {/* Product filter */}
-            <select
-              value={productFilter}
-              onChange={e => setProduct(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-gray-900"
-            >
-              <option value="all">All products</option>
-              {['T-Shirt','Polo','Hoodie','Hat','Banner'].map(p => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-
-            {/* Sort */}
-            <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-gray-900"
-            >
-              <option value="date">Sort: Date</option>
-              <option value="amount">Sort: Revenue</option>
-              <option value="qty">Sort: Qty</option>
-            </select>
-
-            {/* Export */}
-            <button
-              onClick={exportCSV}
-              className="flex items-center gap-1.5 bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" />
-              CSV
+            <button onClick={loadData} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+              <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} /> Refresh
             </button>
+            {tab === 'orders' && (
+              <button onClick={exportCSV} className="flex items-center gap-1.5 bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800">
+                <Download className="w-3.5 h-3.5" /> CSV
+              </button>
+            )}
           </div>
+        )}
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>
-                  {['Order ID','Customer','Product','Qty','Amount','Status','Date','Design','Actions'].map(h => (
-                    <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtered.length === 0 && (
+        {/* ── ORDERS TAB ─────────────────────────────────────────────────────── */}
+        {tab === 'orders' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
-                    <td colSpan={9} className="text-center py-10 text-gray-400 text-sm">
-                      No orders match your filters.
-                    </td>
+                    {['Buyer', 'Listing', 'Qty', 'Total Paid', 'Refund', 'Date', 'Actions'].map(h => (
+                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
                   </tr>
-                )}
-                {filtered.map((order) => (
-                  <React.Fragment key={order.id}>
-                    <tr
-                      className="hover:bg-gray-50/70 cursor-pointer transition-colors"
-                      onClick={() => setShowOrderId(showOrderId === order.id ? null : order.id)}
-                    >
-                      <td className="px-5 py-3.5 font-mono text-xs text-gray-500">{order.id}</td>
-                      <td className="px-5 py-3.5">
-                        <div className="font-medium text-gray-800">{order.customer}</div>
-                        <div className="text-xs text-gray-400">{order.email}</div>
-                      </td>
-                      <td className="px-5 py-3.5 text-gray-700">{order.product}</td>
-                      <td className="px-5 py-3.5 text-gray-700 tabular-nums">{order.qty}</td>
-                      <td className="px-5 py-3.5 font-semibold text-gray-800 tabular-nums">
-                        ${order.amount.toLocaleString('en-CA', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-5 py-3.5"><StatusBadge status={order.status} /></td>
-                      <td className="px-5 py-3.5 text-gray-500 tabular-nums">{order.date}</td>
-                      <td className="px-5 py-3.5 text-gray-600 max-w-[160px] truncate">{order.design}</td>
-                      <td className="px-5 py-3.5">
-                        <select
-                          value={order.status}
-                          onChange={e => { e.stopPropagation(); updateStatus(order.id, e.target.value); }}
-                          onClick={e => e.stopPropagation()}
-                          className="text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900"
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="in-progress">In Progress</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </td>
-                    </tr>
-                    {/* Expanded row */}
-                    {showOrderId === order.id && (
-                      <tr className="bg-gray-50">
-                        <td colSpan={9} className="px-5 py-4">
-                          <div className="flex flex-wrap gap-6 text-sm">
-                            <div>
-                              <span className="text-gray-500 text-xs uppercase tracking-wide">Notes</span>
-                              <p className="text-gray-800 mt-0.5">{order.notes || '—'}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500 text-xs uppercase tracking-wide">Unit Price</span>
-                              <p className="text-gray-800 mt-0.5">${(order.amount / order.qty).toFixed(2)}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500 text-xs uppercase tracking-wide">Design Name</span>
-                              <p className="text-gray-800 mt-0.5">{order.design}</p>
-                            </div>
-                          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {dataLoading && (
+                    <tr><td colSpan={7} className="text-center py-10 text-gray-400">Loading orders…</td></tr>
+                  )}
+                  {!dataLoading && filteredOrders.length === 0 && (
+                    <tr><td colSpan={7} className="text-center py-10 text-gray-400">No orders found.</td></tr>
+                  )}
+                  {filteredOrders.map(order => (
+                    <React.Fragment key={order.id}>
+                      <tr
+                        className="hover:bg-gray-50/70 cursor-pointer"
+                        onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                      >
+                        <td className="px-5 py-3.5">
+                          <div className="font-medium text-gray-800">{order.buyer_name}</div>
+                          <div className="text-xs text-gray-400">{order.buyer_email}</div>
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-700">{order.listings?.title ?? '—'}</td>
+                        <td className="px-5 py-3.5 tabular-nums">{order.quantity}</td>
+                        <td className="px-5 py-3.5 font-semibold tabular-nums">{fmt(order.total_paid)}</td>
+                        <td className="px-5 py-3.5"><Badge value={order.refund_status} /></td>
+                        <td className="px-5 py-3.5 text-gray-400 tabular-nums text-xs">{order.created_at?.slice(0, 10)}</td>
+                        <td className="px-5 py-3.5">
+                          {order.refund_status !== 'full' && order.stripe_payment_intent && (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleRefund(order.id, 'full'); }}
+                              disabled={refundingId === order.id}
+                              className="text-xs bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-md hover:bg-red-100 disabled:opacity-50"
+                            >
+                              {refundingId === order.id ? 'Refunding…' : 'Refund'}
+                            </button>
+                          )}
                         </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
+                      {expandedOrder === order.id && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={7} className="px-5 py-4">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div><span className="text-xs text-gray-400 uppercase">Student ID</span><p className="mt-0.5">{order.student_id || '—'}</p></div>
+                              <div><span className="text-xs text-gray-400 uppercase">Size</span><p className="mt-0.5">{order.size || '—'}</p></div>
+                              <div><span className="text-xs text-gray-400 uppercase">Refund Amount</span><p className="mt-0.5">{fmt(order.refund_amount)}</p></div>
+                              <div><span className="text-xs text-gray-400 uppercase">Payment Intent</span><p className="mt-0.5 font-mono text-xs truncate">{order.stripe_payment_intent || '—'}</p></div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
+              Showing {filteredOrders.length} of {orders.length} orders
+            </div>
           </div>
+        )}
 
-          <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
-            <span>Showing {filtered.length} of {orders.length} orders</span>
-            <span className="flex items-center gap-1.5 text-gray-300 italic">
-              <RefreshCw className="w-3 h-3" />
-              Mock data — connect Supabase for live orders
-            </span>
+        {/* ── LISTINGS TAB ───────────────────────────────────────────────────── */}
+        {tab === 'listings' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    {['Title', 'Club', 'Price', 'Qty Left', 'Fee %', 'Deadline', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {dataLoading && (
+                    <tr><td colSpan={8} className="text-center py-10 text-gray-400">Loading listings…</td></tr>
+                  )}
+                  {!dataLoading && filteredListings.length === 0 && (
+                    <tr><td colSpan={8} className="text-center py-10 text-gray-400">No listings found.</td></tr>
+                  )}
+                  {filteredListings.map(l => (
+                    <tr key={l.id} className="hover:bg-gray-50/70">
+                      <td className="px-5 py-3.5 font-medium text-gray-800 max-w-[200px] truncate">{l.title}</td>
+                      <td className="px-5 py-3.5 text-gray-600">{l.clubs?.name ?? '—'}</td>
+                      <td className="px-5 py-3.5 tabular-nums">{fmt(l.price)}</td>
+                      <td className="px-5 py-3.5 tabular-nums">{l.quantity_available}</td>
+                      <td className="px-5 py-3.5 tabular-nums">{l.platform_fee_percent}%</td>
+                      <td className="px-5 py-3.5 text-gray-400 text-xs tabular-nums">{l.order_deadline?.slice(0, 10)}</td>
+                      <td className="px-5 py-3.5"><Badge value={l.status} /></td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex gap-1.5">
+                          {l.status === 'pending' && (
+                            <button
+                              onClick={() => approveListing(l.id)}
+                              className="text-xs bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-md hover:bg-green-100"
+                            >
+                              Approve
+                            </button>
+                          )}
+                          {l.status === 'approved' && (
+                            <button
+                              onClick={() => closeListing(l.id)}
+                              className="text-xs bg-gray-100 text-gray-600 border border-gray-200 px-2.5 py-1 rounded-md hover:bg-gray-200"
+                            >
+                              Close
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
+        {/* ── CLUBS TAB ─────────────────────────────────────────────────────── */}
+        {tab === 'clubs' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    {['Club Name', 'Stripe Account', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {dataLoading && (
+                    <tr><td colSpan={4} className="text-center py-10 text-gray-400">Loading clubs…</td></tr>
+                  )}
+                  {clubs.map(club => (
+                    <tr key={club.id} className="hover:bg-gray-50/70">
+                      <td className="px-5 py-3.5 font-medium text-gray-800">{club.name}</td>
+                      <td className="px-5 py-3.5 font-mono text-xs text-gray-500">{club.stripe_account_id || '—'}</td>
+                      <td className="px-5 py-3.5">
+                        <Badge value={club.stripe_account_id ? 'connected' : 'pending'} />
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex gap-1.5">
+                          {!club.stripe_account_id ? (
+                            <button
+                              onClick={() => handleCreateStripeAccount(club.id)}
+                              disabled={connectingClub === club.id}
+                              className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md hover:bg-blue-100 disabled:opacity-50"
+                            >
+                              {connectingClub === club.id ? 'Creating…' : 'Create Stripe Account'}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleOnboardingLink(club.id)}
+                              disabled={connectingClub === club.id}
+                              className="flex items-center gap-1 text-xs bg-gray-100 text-gray-700 border border-gray-200 px-2.5 py-1 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              {connectingClub === club.id ? 'Loading…' : 'Onboarding Link'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── ANALYTICS TAB ─────────────────────────────────────────────────── */}
+        {tab === 'analytics' && (
+          <div className="space-y-6">
+            {!analytics ? (
+              <div className="bg-white rounded-xl p-10 text-center text-gray-400 shadow-sm border border-gray-100">
+                Loading analytics…
+              </div>
+            ) : (
+              <>
+                {/* Global totals */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <KpiCard icon={Package}    label="Total Orders"       value={analytics.global.total_orders} color="blue" />
+                  <KpiCard icon={DollarSign} label="Gross Revenue"       value={fmt(analytics.global.gross_revenue)} sub="after refunds" color="green" />
+                  <KpiCard icon={TrendingUp} label="Platform Earnings"   value={fmt(analytics.global.platform_earnings)} color="purple" />
+                  <KpiCard icon={RefreshCw}  label="Total Refunded"      value={fmt(analytics.global.total_refunded)} color="amber" />
+                </div>
+
+                {/* Per-club table */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100">
+                    <h2 className="font-semibold text-gray-800">Per-Club Breakdown</h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-100">
+                        <tr>
+                          {['Club', 'Orders', 'Units', 'Gross', 'Platform Fee', 'Club Net', 'Club Profit', 'Refunded'].map(h => (
+                            <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {analytics.clubs.map(c => (
+                          <tr key={c.club_id} className="hover:bg-gray-50/70">
+                            <td className="px-5 py-3.5 font-medium text-gray-800">{c.club_name}</td>
+                            <td className="px-5 py-3.5 tabular-nums">{c.total_orders}</td>
+                            <td className="px-5 py-3.5 tabular-nums">{c.units_sold}</td>
+                            <td className="px-5 py-3.5 tabular-nums">{fmt(c.gross_revenue)}</td>
+                            <td className="px-5 py-3.5 tabular-nums text-purple-700">{fmt(c.platform_earnings)}</td>
+                            <td className="px-5 py-3.5 tabular-nums">{fmt(c.club_net)}</td>
+                            <td className="px-5 py-3.5 tabular-nums text-green-700 font-semibold">{fmt(c.club_profit)}</td>
+                            <td className="px-5 py-3.5 tabular-nums text-red-600">{fmt(c.total_refunded)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,54 +2,49 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-// Make Stripe optional - don't crash if not configured
-let Stripe;
-let stripe = null;
-try {
-  const StripeModule = await import('stripe');
-  Stripe = StripeModule.default;
-} catch (error) {
-  // Payment features disabled
-}
-
 dotenv.config();
-const app = express();
-app.use(cors());
-app.use(express.json());
 
+import checkoutRouter  from './routes/checkout.js';
+import webhookRouter   from './routes/webhook.js';
+import refundRouter    from './routes/refund.js';
+import analyticsRouter from './routes/analytics.js';
+import connectRouter   from './routes/connect.js';
+import { startAutoCloseJob } from './jobs/autoClose.js';
+
+const app = express();
 const PORT = process.env.PORT || 4242;
 
-// Initialize Stripe only if module is available and key is provided
-if (Stripe && process.env.STRIPE_SECRET_KEY) {
-  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
-}
+// ── CORS ─────────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  process.env.CLIENT_URL ?? 'http://localhost:3000',
+  'http://localhost:3000',
+  'http://localhost:5173',
+];
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
 
-// Health
-app.get('/health', (_req, res) => res.json({ ok: true }));
+// ── Webhook route MUST use raw body before express.json() ────────────────────
+app.use('/webhook', express.raw({ type: 'application/json' }), webhookRouter);
 
-// Create a Checkout Session
-app.post('/create-checkout-session', async (req, res) => {
-  try {
-    const { priceId, quantity = 1, successUrl, cancelUrl } = req.body || {};
-    const resolvedPriceId = process.env.PRICE_ID || priceId;
-    if (!stripe || !(process.env.STRIPE_SECRET_KEY)) {
-      return res.status(500).json({ error: 'Stripe not configured. Set STRIPE_SECRET_KEY in server/.env' });
-    }
-    if (!resolvedPriceId) {
-      return res.status(400).json({ error: 'Missing priceId (or set PRICE_ID in .env).' });
-    }
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: [{ price: resolvedPriceId, quantity }],
-      success_url: successUrl || 'http://localhost:3000/store?status=success',
-      cancel_url: cancelUrl || 'http://localhost:3000/store?status=cancelled',
-    });
-    res.json({ url: session.url });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// ── JSON body parser for all other routes ────────────────────────────────────
+app.use(express.json());
 
+// ── Health ───────────────────────────────────────────────────────────────────
+app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
+// ── Routes ───────────────────────────────────────────────────────────────────
+app.use('/checkout',        checkoutRouter);
+app.use('/admin/refund',    refundRouter);
+app.use('/admin/analytics', analyticsRouter);
+app.use('/admin/connect',   connectRouter);
+
+// ── Start server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`API Server running on http://localhost:${PORT}`);
+  startAutoCloseJob();
 });

@@ -73,7 +73,10 @@ function buildDecal(geo, location, designSize, designRotationDeg) {
   const box = new THREE.Box3().setFromBufferAttribute(geo.attributes.position);
   const c   = box.getCenter(new THREE.Vector3());
   const s   = box.getSize(new THREE.Vector3());
-  const rotZ = (designRotationDeg * Math.PI) / 180;
+
+  // Clamp rotation to [-90, 90] degrees to prevent projection artifacts
+  const clampedDeg = Math.max(-90, Math.min(90, designRotationDeg));
+  const rotZ = (clampedDeg * Math.PI) / 180;
 
   // Negate W to un-mirror; multiply by designSize to honour the slider
   const W = -(s.x * 0.50 * designSize);   // negative = horizontal flip = correct
@@ -150,13 +153,27 @@ function CameraReset({ location, camZ }) {
   return null;
 }
 
+// ─── Determine which side a print location belongs to ────────────────────────
+function locationSide(location) {
+  if (location === 'back-center' || location === 'back') return 'back';
+  return 'front';
+}
+
 // ─── Shared Decal renderer ────────────────────────────────────────────────────
-function DesignDecal({ geo, designTexture, printLocation, designSize, designRotation }) {
+// selectedSide ("front" | "back" | undefined) gates rendering: the decal is
+// only shown when selectedSide matches the location's side. When selectedSide
+// is undefined (legacy callers), the decal always renders.
+function DesignDecal({ geo, designTexture, printLocation, designSize, designRotation, selectedSide }) {
   const d = useMemo(
     () => buildDecal(geo, printLocation, designSize, designRotation),
     [geo, printLocation, designSize, designRotation],
   );
+
+  // Hide decal if the user has selected the opposite side
+  const thisSide = locationSide(printLocation);
+  if (selectedSide && selectedSide !== thisSide) return null;
   if (!d || !designTexture) return null;
+
   return (
     <Decal
       position={d.pos}
@@ -173,7 +190,7 @@ function DesignDecal({ geo, designTexture, printLocation, designSize, designRota
 // ─── T-SHIRT ──────────────────────────────────────────────────────────────────
 const TSHIRT_NODES = ['Object_2', 'Object_3', 'Object_4', 'Object_5'];
 
-function TShirt3D({ color, designTexture, printLocation, designSize, designRotation }) {
+function TShirt3D({ color, designTexture, printLocation, designSize, designRotation, selectedSide }) {
   const { nodes } = useGLTF('/t-shirt.glb');
   const ref = useRef();
   useAutoNormalize(ref);
@@ -186,7 +203,6 @@ function TShirt3D({ color, designTexture, printLocation, designSize, designRotat
         if (!geo) return null;
         return (
           <mesh key={name} geometry={geo} material={mat} castShadow receiveShadow>
-            {/* Decal only on the body panel */}
             {name === 'Object_2' && (
               <DesignDecal
                 geo={geo}
@@ -194,6 +210,7 @@ function TShirt3D({ color, designTexture, printLocation, designSize, designRotat
                 printLocation={printLocation}
                 designSize={designSize}
                 designRotation={designRotation}
+                selectedSide={selectedSide}
               />
             )}
           </mesh>
@@ -209,7 +226,7 @@ const POLO_NODES = [
   'Object_9','Object_10','Object_11','Object_12',
 ];
 
-function Polo3D({ color, designTexture, printLocation, designSize, designRotation }) {
+function Polo3D({ color, designTexture, printLocation, designSize, designRotation, selectedSide }) {
   const { nodes } = useGLTF('/polo.glb');
   const ref = useRef();
   useAutoNormalize(ref);
@@ -229,6 +246,7 @@ function Polo3D({ color, designTexture, printLocation, designSize, designRotatio
                 printLocation={printLocation}
                 designSize={designSize}
                 designRotation={designRotation}
+                selectedSide={selectedSide}
               />
             )}
           </mesh>
@@ -246,7 +264,7 @@ const HOODIE_MAIN = [
   'hoodie_Sweat_hood_Rib_1X1_319gsm_hood_0',
 ];
 
-function Hoodie3D({ color, designTexture, printLocation, designSize, designRotation }) {
+function Hoodie3D({ color, designTexture, printLocation, designSize, designRotation, selectedSide }) {
   const { nodes, scene } = useGLTF('/hoodie.glb');
   const ref       = useRef();
   useAutoNormalize(ref);
@@ -280,6 +298,7 @@ function Hoodie3D({ color, designTexture, printLocation, designSize, designRotat
                 printLocation={printLocation}
                 designSize={designSize}
                 designRotation={designRotation}
+                selectedSide={selectedSide}
               />
             )}
           </mesh>
@@ -403,6 +422,24 @@ function Banner3D({ color, designTexture }) {
   );
 }
 
+// ─── Debug normals helper ─────────────────────────────────────────────────────
+// Renders VertexNormalsHelper on the scene when debugNormals=true.
+// Helps diagnose decal projection direction issues.
+function DebugNormalsHelper({ product }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    const helpers = [];
+    scene.traverse((node) => {
+      if (!node.isMesh) return;
+      const helper = new THREE.VertexNormalsHelper(node, 0.04, 0x00ff88);
+      scene.add(helper);
+      helpers.push(helper);
+    });
+    return () => { helpers.forEach(h => scene.remove(h)); };
+  }, [scene, product]);
+  return null;
+}
+
 // ─── Product map ──────────────────────────────────────────────────────────────
 const PRODUCT_MAP = {
   tshirt: TShirt3D,
@@ -413,16 +450,17 @@ const PRODUCT_MAP = {
 };
 
 // ─── Scene with texture ───────────────────────────────────────────────────────
-function SceneWithTexture({ product, color, designImage, printLocation, designSize, designRotation, greyMode }) {
+function SceneWithTexture({ product, color, designImage, printLocation, designSize, designRotation, greyMode, selectedSide }) {
   const texture = useTexture(designImage);
 
-  // Fix mirroring: flip the texture's U axis
+  // Fix mirroring: flip the texture's U axis.
+  // Re-apply whenever designImage identity changes (new upload).
   useEffect(() => {
     texture.wrapS = THREE.RepeatWrapping;
     texture.repeat.x = -1;
     texture.offset.x = 1;
     texture.needsUpdate = true;
-  }, [texture]);
+  }, [texture, designImage]);
 
   const Comp = PRODUCT_MAP[product] || TShirt3D;
   return (
@@ -432,11 +470,12 @@ function SceneWithTexture({ product, color, designImage, printLocation, designSi
       printLocation={printLocation}
       designSize={designSize}
       designRotation={designRotation}
+      selectedSide={selectedSide}
     />
   );
 }
 
-function SceneNoTexture({ product, color, printLocation, greyMode }) {
+function SceneNoTexture({ product, color, printLocation, greyMode, selectedSide }) {
   const Comp = PRODUCT_MAP[product] || TShirt3D;
   return (
     <Comp
@@ -445,6 +484,7 @@ function SceneNoTexture({ product, color, printLocation, greyMode }) {
       printLocation={printLocation}
       designSize={1}
       designRotation={0}
+      selectedSide={selectedSide}
     />
   );
 }
@@ -456,8 +496,10 @@ export default function Product3DViewer({
   garmentColor   = '#ffffff',
   printLocation  = 'front-center',
   designSize     = 0.8,           // 0.2 – 1.5, controls decal scale
-  designRotation = 0,             // degrees, rotates the decal around Z
+  designRotation = 0,             // degrees [-90, 90], rotates the decal around Z
   greyMode       = false,
+  selectedSide   = undefined,     // "front" | "back" | undefined (unrestricted)
+  debugNormals   = false,         // render vertex normals helper on body mesh
 }) {
   const camZ = product === 'banner' ? 11 : product === 'hat' ? 7 : 8;
   const [facing, setFacing] = useState('FRONT');
@@ -507,12 +549,14 @@ export default function Product3DViewer({
                   designSize={designSize}
                   designRotation={designRotation}
                   greyMode={greyMode}
+                  selectedSide={selectedSide}
                 />
               : <SceneNoTexture
                   product={product}
                   color={garmentColor}
                   printLocation={printLocation}
                   greyMode={greyMode}
+                  selectedSide={selectedSide}
                 />
             }
           </Suspense>
@@ -534,6 +578,9 @@ export default function Product3DViewer({
 
           {/* Auto-reposition camera when location changes to back */}
           <CameraReset location={printLocation} camZ={camZ} />
+
+          {/* Debug normals — only rendered when debugNormals=true */}
+          {debugNormals && <DebugNormalsHelper product={product} />}
         </Canvas>
 
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-4 py-1.5 rounded-full pointer-events-none select-none">
