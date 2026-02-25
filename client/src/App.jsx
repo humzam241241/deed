@@ -25,6 +25,7 @@ const AdminDashboard  = lazy(() => import('./pages/AdminDashboard'));
 const ListingDetail   = lazy(() => import('./pages/ListingDetail'));
 const ClubDashboard   = lazy(() => import('./pages/ClubDashboard'));
 const Listings        = lazy(() => import('./pages/Listings'));
+const Login           = lazy(() => import('./pages/Login'));
 
 // ─── Loading fallbacks ────────────────────────────────────────────────────────
 const DarkFallback  = <div className="min-h-screen bg-gray-950" />;
@@ -65,6 +66,16 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
+        {/* ── Auth pages — no Navbar/Footer ── */}
+        <Route
+          path="/login"
+          element={
+            <Suspense fallback={LightFallback}>
+              <Login />
+            </Suspense>
+          }
+        />
+
         {/* ── Admin pages — no Navbar/Footer ── */}
         <Route
           path="/admin/login"

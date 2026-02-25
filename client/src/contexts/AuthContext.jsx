@@ -58,6 +58,21 @@ export function AuthProvider({ children }) {
     return data;
   }
 
+  async function signUp(email, password, role = 'student', clubId = null) {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+    if (data?.user) {
+      const { error: profileError } = await supabase.from('users').insert({
+        id: data.user.id,
+        role,
+        club_id: clubId || null,
+        is_exec_approved: false,
+      });
+      if (profileError) throw profileError;
+    }
+    return data;
+  }
+
   async function signOut() {
     await supabase.auth.signOut();
   }
@@ -70,6 +85,7 @@ export function AuthProvider({ children }) {
     isExecApproved,
     loading,
     signIn,
+    signUp,
     signOut,
     isAdmin: userRole === 'admin',
     isExec: userRole === 'club_exec' && isExecApproved,
