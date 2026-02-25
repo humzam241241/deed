@@ -1,6 +1,6 @@
 import supabase from './supabase.js';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4242';
+const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:4242').replace(/\/$/, '');
 
 /**
  * Fetch wrapper that automatically attaches the current Supabase JWT.
