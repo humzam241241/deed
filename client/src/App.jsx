@@ -24,6 +24,7 @@ const AdminLogin      = lazy(() => import('./pages/AdminLogin'));
 const AdminDashboard  = lazy(() => import('./pages/AdminDashboard'));
 const ListingDetail   = lazy(() => import('./pages/ListingDetail'));
 const ClubDashboard   = lazy(() => import('./pages/ClubDashboard'));
+const Listings        = lazy(() => import('./pages/Listings'));
 
 // ─── Loading fallbacks ────────────────────────────────────────────────────────
 const DarkFallback  = <div className="min-h-screen bg-gray-950" />;
@@ -107,6 +108,14 @@ export default function App() {
             element={
               <Suspense fallback={LightFallback}>
                 <DesignStudio />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/listings"
+            element={
+              <Suspense fallback={LightFallback}>
+                <Listings />
               </Suspense>
             }
           />
