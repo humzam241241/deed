@@ -5,6 +5,7 @@ import MeetingStrip from '../components/MeetingStrip';
 import TrustedBy from '../components/TrustedBy';
 import MiniGallery from '../components/MiniGallery';
 import DesignStudioCTA from '../components/DesignStudioCTA';
+import MarketplaceSection from '../components/MarketplaceSection';
 import SocialBar from '../components/SocialBar';
 import FloatingSocial from '../components/FloatingSocial';
 import ChatBot from '../components/ChatBot';
@@ -14,6 +15,7 @@ export default function Home() {
     <div className="min-h-screen">
       <Hero />
       <Steps />
+      <MarketplaceSection />
       <MeetingStrip />
       <TrustedBy />
       <MiniGallery />

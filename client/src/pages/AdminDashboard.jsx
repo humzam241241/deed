@@ -11,6 +11,7 @@ import { refundOrder, fetchAnalytics } from '../lib/api.js';
 import AdminClubsPanel    from '../components/admin/AdminClubsPanel.jsx';
 import AdminUsersPanel    from '../components/admin/AdminUsersPanel.jsx';
 import AdminListingsPanel from '../components/admin/AdminListingsPanel.jsx';
+import AnalyticsPanel     from '../components/admin/AnalyticsPanel.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n) => `$${Number(n ?? 0).toLocaleString('en-CA', { minimumFractionDigits: 2 })}`;
@@ -65,7 +66,8 @@ export default function AdminDashboard() {
 
   const [tab, setTab]             = useState('review');
   const [orders, setOrders]       = useState([]);
-  const [analytics, setAnalytics] = useState(null);
+  const [analytics, setAnalytics]       = useState(null);
+  const [analyticsError, setAnalyticsError] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
   const [dataLoading, setDataLoading]   = useState(false);
   const [error, setError]         = useState('');
@@ -93,11 +95,12 @@ export default function AdminDashboard() {
   }, []);
 
   const loadAnalytics = useCallback(async () => {
+    setAnalyticsError('');
     try {
       const data = await fetchAnalytics();
       setAnalytics(data);
     } catch (err) {
-      setError(err.message);
+      setAnalyticsError(err.message);
     }
   }, []);
 
@@ -310,51 +313,7 @@ export default function AdminDashboard() {
 
         {/* ── Analytics ────────────────────────────────────────────────────── */}
         {tab === 'analytics' && (
-          <div className="space-y-6">
-            {!analytics ? (
-              <div className="bg-white rounded-xl p-10 text-center text-gray-400 shadow-sm border border-gray-100">
-                Loading analytics…
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <KpiCard icon={Package}    label="Total Orders"     value={analytics.global.total_orders}              color="blue"   />
-                  <KpiCard icon={DollarSign} label="Gross Revenue"    value={fmt(analytics.global.gross_revenue)}  sub="after refunds" color="green"  />
-                  <KpiCard icon={TrendingUp} label="Platform Earnings" value={fmt(analytics.global.platform_earnings)}   color="purple" />
-                  <KpiCard icon={RefreshCw}  label="Total Refunded"   value={fmt(analytics.global.total_refunded)}      color="amber"  />
-                </div>
-
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-100 font-semibold text-gray-800">Per-Club Breakdown</div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-100">
-                        <tr>
-                          {['Club', 'Orders', 'Units', 'Gross', 'Platform Fee', 'Club Net', 'Club Profit', 'Refunded'].map(h => (
-                            <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {analytics.clubs.map(c => (
-                          <tr key={c.club_id} className="hover:bg-gray-50/70">
-                            <td className="px-5 py-3.5 font-medium text-gray-800">{c.club_name}</td>
-                            <td className="px-5 py-3.5 tabular-nums">{c.total_orders}</td>
-                            <td className="px-5 py-3.5 tabular-nums">{c.units_sold}</td>
-                            <td className="px-5 py-3.5 tabular-nums">{fmt(c.gross_revenue)}</td>
-                            <td className="px-5 py-3.5 tabular-nums text-purple-700">{fmt(c.platform_earnings)}</td>
-                            <td className="px-5 py-3.5 tabular-nums">{fmt(c.club_net)}</td>
-                            <td className="px-5 py-3.5 tabular-nums text-green-700 font-semibold">{fmt(c.club_profit)}</td>
-                            <td className="px-5 py-3.5 tabular-nums text-red-600">{fmt(c.total_refunded)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+          <AnalyticsPanel analytics={analytics} loading={!analytics} error={analyticsError} />
         )}
       </div>
     </div>
