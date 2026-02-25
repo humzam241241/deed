@@ -42,7 +42,13 @@ export default function AdminUsersPanel() {
 
   const approveExec = (id) => update(id, { is_exec_approved: true, role: 'club_exec' });
   const revokeExec  = (id) => update(id, { is_exec_approved: false });
-  const setRole     = (id, role) => update(id, { role });
+  const setRole = (id, role) => {
+    const patch = { role };
+    // Auto-approve admins; auto-revoke students
+    if (role === 'admin') patch.is_exec_approved = true;
+    if (role === 'student') patch.is_exec_approved = false;
+    update(id, patch);
+  };
   const setClub     = (id, club_id) => update(id, { club_id: club_id || null });
 
   const handleDelete = async (id, email) => {
