@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, RefreshCw, UserCheck, Users } from 'lucide-react';
+import { AlertTriangle, RefreshCw, UserCheck, Users, Trash2 } from 'lucide-react';
 import supabase from '../../lib/supabase.js';
+import { deleteUser } from '../../lib/api.js';
 
 const ROLES = ['admin', 'club_exec', 'student'];
 
@@ -43,6 +44,20 @@ export default function AdminUsersPanel() {
   const revokeExec  = (id) => update(id, { is_exec_approved: false });
   const setRole     = (id, role) => update(id, { role });
   const setClub     = (id, club_id) => update(id, { club_id: club_id || null });
+
+  const handleDelete = async (id, email) => {
+    if (!window.confirm(`Permanently delete user ${email ?? id}? This cannot be undone.`)) return;
+    setSaving(id);
+    setError('');
+    try {
+      await deleteUser(id);
+      setUsers(prev => prev.filter(u => u.id !== id));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -128,25 +143,36 @@ export default function AdminUsersPanel() {
 
                   {/* Actions */}
                   <td className="px-5 py-3.5">
-                    {u.role === 'club_exec' && !u.is_exec_approved && (
+                    <div className="flex items-center gap-1.5">
+                      {u.role === 'club_exec' && !u.is_exec_approved && (
+                        <button
+                          onClick={() => approveExec(u.id)}
+                          disabled={saving === u.id}
+                          className="flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-md hover:bg-green-100 disabled:opacity-50 transition-colors"
+                        >
+                          <UserCheck className="w-3 h-3" />
+                          Approve
+                        </button>
+                      )}
+                      {u.is_exec_approved && (
+                        <button
+                          onClick={() => revokeExec(u.id)}
+                          disabled={saving === u.id}
+                          className="text-xs bg-amber-50 text-amber-600 border border-amber-200 px-2.5 py-1 rounded-md hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                        >
+                          Revoke
+                        </button>
+                      )}
                       <button
-                        onClick={() => approveExec(u.id)}
+                        onClick={() => handleDelete(u.id, u.email)}
                         disabled={saving === u.id}
-                        className="flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-md hover:bg-green-100 disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-1 text-xs bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-md hover:bg-red-100 disabled:opacity-50 transition-colors"
+                        title="Delete user permanently"
                       >
-                        <UserCheck className="w-3 h-3" />
-                        Approve Exec
+                        <Trash2 className="w-3 h-3" />
+                        Delete
                       </button>
-                    )}
-                    {u.is_exec_approved && (
-                      <button
-                        onClick={() => revokeExec(u.id)}
-                        disabled={saving === u.id}
-                        className="text-xs bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-md hover:bg-red-100 disabled:opacity-50 transition-colors"
-                      >
-                        Revoke
-                      </button>
-                    )}
+                    </div>
                   </td>
                 </tr>
               ))}

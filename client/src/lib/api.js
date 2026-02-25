@@ -47,6 +47,14 @@ export function fetchAnalytics() {
   return apiFetch('/admin/analytics');
 }
 
+// ─── Admin: delete user ───────────────────────────────────────────────────────
+export function deleteUser(user_id) {
+  return apiFetch('/admin/delete-user', {
+    method: 'DELETE',
+    body: JSON.stringify({ user_id }),
+  });
+}
+
 // ─── Admin: Stripe Connect ────────────────────────────────────────────────────
 export function createConnectedAccount(club_id, email) {
   return apiFetch('/admin/connect/create', {
