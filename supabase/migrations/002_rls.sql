@@ -71,6 +71,12 @@ CREATE POLICY "student_clubs_read" ON clubs
   TO authenticated
   USING (current_user_role() = 'student');
 
+-- Anonymous: read all clubs (needed for exec signup dropdown before auth)
+CREATE POLICY "anon_clubs_read" ON clubs
+  FOR SELECT
+  TO anon
+  USING (true);
+
 -- ============================================================
 -- USERS
 -- ============================================================
