@@ -59,17 +59,19 @@ export function AuthProvider({ children }) {
   }
 
   async function signUp(email, password, role = 'student', clubId = null) {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    // Pass role + club_id as metadata so the DB trigger can create the
+    // public.users row without needing an active session (bypasses RLS).
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          role,
+          club_id: clubId || '',
+        },
+      },
+    });
     if (error) throw error;
-    if (data?.user) {
-      const { error: profileError } = await supabase.from('users').insert({
-        id: data.user.id,
-        role,
-        club_id: clubId || null,
-        is_exec_approved: false,
-      });
-      if (profileError) throw profileError;
-    }
     return data;
   }
 
