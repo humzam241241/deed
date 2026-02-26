@@ -51,6 +51,8 @@ async function handleCheckoutCompleted(session) {
     buyer_name,
     buyer_email,
     student_id,
+    discount_code,
+    discount_amount,
   } = meta;
 
   if (!listing_id || !paymentIntent) {
@@ -86,6 +88,8 @@ async function handleCheckoutCompleted(session) {
     stripe_invoice_id: session.invoice ?? null,
     refund_status: 'none',
     refund_amount: 0,
+    discount_code: discount_code || null,
+    discount_amount: parseFloat(discount_amount ?? '0') || 0,
   });
 
   if (insertErr) {

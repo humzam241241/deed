@@ -6,7 +6,7 @@ const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:4242').replac
  * Fetch wrapper that automatically attaches the current Supabase JWT.
  * Falls back to unauthenticated request if no session exists.
  */
-async function apiFetch(path, options = {}) {
+export async function apiFetch(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
 
@@ -65,4 +65,27 @@ export function createConnectedAccount(club_id, email) {
 
 export function getOnboardingLink(club_id) {
   return apiFetch(`/admin/connect/onboard-link/${club_id}`);
+}
+
+// ─── Discount codes ───────────────────────────────────────────────────────────
+export function validateDiscount(code, listing_id, quantity) {
+  return apiFetch('/discount/validate', {
+    method: 'POST',
+    body: JSON.stringify({ code, listing_id, quantity }),
+  });
+}
+
+export function listDiscountCodes() {
+  return apiFetch('/admin/discount-codes');
+}
+
+export function createDiscountCode(payload) {
+  return apiFetch('/admin/discount-codes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteDiscountCode(id) {
+  return apiFetch(`/admin/discount-codes/${id}`, { method: 'DELETE' });
 }

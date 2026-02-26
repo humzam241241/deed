@@ -61,7 +61,7 @@ export default function AdminClubsPanel() {
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{clubs.length} club{clubs.length !== 1 ? 's' : ''} registered</p>
+        <p className="text-sm text-gray-500">{clubs.length} organization{clubs.length !== 1 ? 's' : ''} registered</p>
         <div className="flex gap-2">
           <button onClick={load} className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -82,7 +82,7 @@ export default function AdminClubsPanel() {
           className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-end gap-3"
         >
           <div className="flex-1">
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Club Name *</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Organization Name *</label>
             <input
               type="text"
               value={name}
@@ -116,7 +116,7 @@ export default function AdminClubsPanel() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Club Name', 'Stripe Account', 'Status', 'Actions'].map(h => (
+                {['Organization Name', 'Stripe Account', 'Status', 'Actions'].map(h => (
                   <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -129,7 +129,7 @@ export default function AdminClubsPanel() {
                 <tr>
                   <td colSpan={4} className="text-center py-12">
                     <Building2 className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">No clubs yet. Create the first one above.</p>
+                    <p className="text-sm text-gray-400">No organizations yet. Create the first one above.</p>
                   </td>
                 </tr>
               )}

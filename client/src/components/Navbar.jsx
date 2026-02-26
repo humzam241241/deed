@@ -38,12 +38,12 @@ export default function Navbar() {
   };
 
   const dashboardPath = isAdmin ? '/admin' : isExec ? '/club' : '/listings';
-  const dashboardLabel = isAdmin ? 'Admin Dashboard' : isExec ? 'Club Dashboard' : 'Marketplace';
+  const dashboardLabel = isAdmin ? 'Admin Portal' : isExec ? 'Vendor Dashboard' : 'Marketplace';
 
   const roleLabel =
     userRole === 'admin' ? 'Admin'
-    : userRole === 'club_exec' ? 'Club Exec'
-    : 'Student';
+    : userRole === 'club_exec' ? 'Vendor'
+    : 'User';
 
   return (
     <nav className="sticky top-0 bg-white shadow-sm z-50">
@@ -69,6 +69,15 @@ export default function Navbar() {
             </div>
 
             <div className="flex items-center space-x-3">
+              {user && (
+                <Link
+                  to={dashboardPath}
+                  className="flex items-center gap-1.5 text-sm font-medium text-gray-700 border border-gray-200 hover:border-gray-400 hover:text-gray-900 px-4 py-2.5 rounded-lg transition-colors"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  {dashboardLabel}
+                </Link>
+              )}
               <NavLink
                 to="/design-studio"
                 className="bg-gray-800 text-white hover:bg-gray-700 px-5 py-2.5 rounded-lg transition-colors font-medium text-sm"

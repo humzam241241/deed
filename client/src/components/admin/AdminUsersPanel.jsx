@@ -4,6 +4,7 @@ import supabase from '../../lib/supabase.js';
 import { deleteUser } from '../../lib/api.js';
 
 const ROLES = ['admin', 'club_exec', 'student'];
+const ROLE_LABELS = { admin: 'Admin', club_exec: 'Vendor', student: 'User' };
 
 export default function AdminUsersPanel() {
   const [users, setUsers]   = useState([]);
@@ -86,7 +87,7 @@ export default function AdminUsersPanel() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Email', 'Role', 'Club', 'Exec Approved', 'Actions'].map(h => (
+                {['Email', 'Role', 'Organization', 'Status', 'Actions'].map(h => (
                   <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -119,7 +120,7 @@ export default function AdminUsersPanel() {
                       disabled={saving === u.id}
                       className="text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900 bg-white"
                     >
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
                     </select>
                   </td>
 
@@ -131,7 +132,7 @@ export default function AdminUsersPanel() {
                       disabled={saving === u.id}
                       className="text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900 bg-white max-w-[150px]"
                     >
-                      <option value="">— No club —</option>
+                      <option value="">— No organization —</option>
                       {clubs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </td>

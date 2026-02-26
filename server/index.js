@@ -4,12 +4,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-import checkoutRouter    from './routes/checkout.js';
-import webhookRouter     from './routes/webhook.js';
-import refundRouter      from './routes/refund.js';
-import analyticsRouter   from './routes/analytics.js';
-import connectRouter     from './routes/connect.js';
-import deleteUserRouter  from './routes/deleteUser.js';
+import checkoutRouter       from './routes/checkout.js';
+import webhookRouter        from './routes/webhook.js';
+import refundRouter         from './routes/refund.js';
+import analyticsRouter      from './routes/analytics.js';
+import connectRouter        from './routes/connect.js';
+import deleteUserRouter     from './routes/deleteUser.js';
+import discountCodesRouter  from './routes/discountCodes.js';
+import sendEmailRouter      from './routes/sendEmail.js';
 import { startAutoCloseJob } from './jobs/autoClose.js';
 
 const app = express();
@@ -46,11 +48,14 @@ app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 // ── Routes ───────────────────────────────────────────────────────────────────
-app.use('/checkout',           checkoutRouter);
-app.use('/admin/refund',       refundRouter);
-app.use('/admin/analytics',    analyticsRouter);
-app.use('/admin/connect',      connectRouter);
-app.use('/admin/delete-user',  deleteUserRouter);
+app.use('/checkout',              checkoutRouter);
+app.use('/admin/refund',          refundRouter);
+app.use('/admin/analytics',       analyticsRouter);
+app.use('/admin/connect',         connectRouter);
+app.use('/admin/delete-user',     deleteUserRouter);
+app.use('/admin/discount-codes',  discountCodesRouter);
+app.use('/discount',              discountCodesRouter);
+app.use('/vendor/send-email',     sendEmailRouter);
 
 // ── Start server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {

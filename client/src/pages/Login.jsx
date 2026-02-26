@@ -213,8 +213,8 @@ export default function Login() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">I am a…</label>
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { val: 'student', label: 'Student', desc: 'Browse & buy merch' },
-                      { val: 'club_exec', label: 'Club Exec', desc: 'Manage club listings' },
+                      { val: 'student', label: 'User', desc: 'Browse & buy merch' },
+                      { val: 'club_exec', label: 'Vendor', desc: 'Manage organization listings' },
                     ].map(({ val, label, desc }) => (
                       <button
                         key={val}
@@ -292,7 +292,7 @@ export default function Login() {
 
                 {suRole === 'club_exec' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Your Club</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Your Organization</label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <select
@@ -301,14 +301,14 @@ export default function Login() {
                         required
                         className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 transition appearance-none bg-white"
                       >
-                        <option value="">— Select your club —</option>
+                        <option value="">— Select your organization —</option>
                         {clubs.map(c => (
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                       </select>
                     </div>
                     <p className="text-xs text-gray-400 mt-1.5">
-                      Your account will require admin approval before you can manage listings.
+                      An admin will verify your organization membership before your account is activated.
                     </p>
                   </div>
                 )}

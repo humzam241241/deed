@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { Calendar, MapPin, Package, Clock, CheckCircle2, AlertTriangle, ShoppingCart } from 'lucide-react';
+import { Calendar, MapPin, Package, Clock, CheckCircle2, AlertTriangle, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
 import supabase from '../lib/supabase.js';
 import { createCheckoutSession } from '../lib/api.js';
+import DiscountCodeInput from '../components/DiscountCodeInput.jsx';
 
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
@@ -38,6 +39,8 @@ export default function ListingDetail() {
   const [quantity, setQuantity]     = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError]   = useState('');
+  const [discount, setDiscount]     = useState(null); // { code, discount_amount }
+  const [photoIndex, setPhotoIndex] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -81,6 +84,7 @@ export default function ListingDetail() {
         buyer_name: buyerName,
         buyer_email: buyerEmail,
         student_id: studentId || undefined,
+        discount_code: discount?.code || undefined,
       });
       window.location.href = url;
     } catch (err) {
@@ -126,6 +130,42 @@ export default function ListingDetail() {
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl px-5 py-4">
             <AlertTriangle className="w-5 h-5 flex-shrink-0" />
             <p>Payment was cancelled. You can try again below.</p>
+          </div>
+        )}
+
+        {/* Photo gallery */}
+        {listing.image_urls?.length > 0 && (
+          <div className="relative bg-black rounded-2xl overflow-hidden aspect-video">
+            <img
+              src={listing.image_urls[photoIndex]}
+              alt={`${listing.title} photo ${photoIndex + 1}`}
+              className="w-full h-full object-contain"
+            />
+            {listing.image_urls.length > 1 && (
+              <>
+                <button
+                  onClick={() => setPhotoIndex(i => (i - 1 + listing.image_urls.length) % listing.image_urls.length)}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-black/70"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setPhotoIndex(i => (i + 1) % listing.image_urls.length)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-black/70"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                  {listing.image_urls.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setPhotoIndex(i)}
+                      className={`w-2 h-2 rounded-full transition-colors ${i === photoIndex ? 'bg-white' : 'bg-white/40'}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -231,26 +271,55 @@ export default function ListingDetail() {
                 />
               </div>
 
-              {/* Order summary */}
-              <div className="bg-gray-50 rounded-xl p-4 text-sm">
-                <div className="flex justify-between text-gray-600">
-                  <span>{quantity} × ${listing.price.toFixed(2)}</span>
-                  <span>${(quantity * listing.price).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-gray-900 mt-2 pt-2 border-t border-gray-200">
-                  <span>Total</span>
-                  <span>${(quantity * listing.price).toFixed(2)} CAD</span>
-                </div>
-              </div>
+              {/* Discount code */}
+              <DiscountCodeInput
+                listingId={listing.id}
+                quantity={quantity}
+                applied={discount}
+                onApply={setDiscount}
+                onRemove={() => setDiscount(null)}
+              />
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-gray-900 text-white py-3 rounded-xl font-medium hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                {submitting ? 'Redirecting to payment…' : `Pay $${(quantity * listing.price).toFixed(2)} CAD`}
-              </button>
+              {/* Order summary */}
+              {(() => {
+                const subtotal = quantity * listing.price;
+                const discountAmt = discount?.discount_amount ?? 0;
+                const total = Math.max(0, subtotal - discountAmt);
+                return (
+                  <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-1.5">
+                    <div className="flex justify-between text-gray-600">
+                      <span>{quantity} × ${listing.price.toFixed(2)}</span>
+                      <span>${subtotal.toFixed(2)}</span>
+                    </div>
+                    {discountAmt > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span>Discount ({discount.code})</span>
+                        <span>−${discountAmt.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200">
+                      <span>Total</span>
+                      <span>${total.toFixed(2)} CAD</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {(() => {
+                const subtotal = quantity * listing.price;
+                const discountAmt = discount?.discount_amount ?? 0;
+                const total = Math.max(0, subtotal - discountAmt);
+                return (
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full bg-gray-900 text-white py-3 rounded-xl font-medium hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    {submitting ? 'Redirecting to payment…' : `Pay $${total.toFixed(2)} CAD`}
+                  </button>
+                );
+              })()}
 
               <p className="text-xs text-gray-400 text-center">
                 You will be redirected to Stripe's secure checkout. Payment is processed by {listing.clubs?.name}.

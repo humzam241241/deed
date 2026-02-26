@@ -2,14 +2,17 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Package, Plus, LogOut, Clock, AlertTriangle,
-  Calendar, MapPin, DollarSign, RefreshCw, X, BarChart2,
+  Calendar, MapPin, DollarSign, RefreshCw, X, BarChart2, Mail,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import supabase from '../lib/supabase.js';
+import PhotoUpload from '../components/PhotoUpload.jsx';
+import { apiFetch } from '../lib/api.js';
 
 const TABS = [
   { key: 'listings', label: 'My Listings' },
   { key: 'sales',    label: 'Sales' },
+  { key: 'email',    label: 'Email Buyers' },
 ];
 
 const STATUS_STYLES = {
@@ -42,6 +45,7 @@ const emptyForm = {
   title: '', description: '', product_type: 'T-Shirt',
   price: '', quantity_available: '', cost_per_unit: '',
   order_deadline: '', pickup_location: '', pickup_instructions: '', pickup_date: '',
+  image_urls: [],
 };
 
 export default function ClubDashboard() {
@@ -58,6 +62,13 @@ export default function ClubDashboard() {
   const [form, setForm]             = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError]   = useState('');
+
+  // Email buyers state
+  const [emailListingId, setEmailListingId] = useState('');
+  const [emailSubject, setEmailSubject]     = useState('');
+  const [emailMessage, setEmailMessage]     = useState('');
+  const [emailSending, setEmailSending]     = useState(false);
+  const [emailResult, setEmailResult]       = useState('');
 
   // Load club, listings, and all orders for the club in one pass
   const loadData = useCallback(async () => {
@@ -119,6 +130,7 @@ export default function ClubDashboard() {
         pickup_location: form.pickup_location || null,
         pickup_instructions: form.pickup_instructions || null,
         pickup_date: form.pickup_date || null,
+        image_urls: form.image_urls ?? [],
         status: 'pending',
       });
       if (insertErr) throw new Error(insertErr.message);
@@ -162,7 +174,7 @@ export default function ClubDashboard() {
             </div>
             <div>
               <span className="font-bold text-sm">{club?.name ?? 'Club Dashboard'}</span>
-              <span className="text-gray-400 text-xs ml-2">Exec Portal</span>
+              <span className="text-gray-400 text-xs ml-2">Vendor Portal</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -322,6 +334,16 @@ export default function ClubDashboard() {
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
                         placeholder="Bring your student ID and order confirmation." />
                     </div>
+
+                    {/* Photos */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Photos (up to 5)</label>
+                      <PhotoUpload
+                        urls={form.image_urls}
+                        onChange={urls => handleFieldChange('image_urls', urls)}
+                        disabled={submitting}
+                      />
+                    </div>
                   </div>
 
                   <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
@@ -390,6 +412,82 @@ export default function ClubDashboard() {
               </div>
             )}
           </>
+        )}
+
+        {/* ── EMAIL BUYERS TAB ───────────────────────────────────────────────── */}
+        {tab === 'email' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5 max-w-xl">
+            <div>
+              <h3 className="font-semibold text-gray-800 mb-1 flex items-center gap-2"><Mail className="w-4 h-4" /> Email Buyers</h3>
+              <p className="text-sm text-gray-500">Send a message to everyone who ordered a specific listing.</p>
+            </div>
+
+            {emailResult && (
+              <div className={`rounded-lg px-4 py-3 text-sm ${emailResult.startsWith('Error') ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+                {emailResult}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Listing</label>
+              <select
+                value={emailListingId}
+                onChange={e => setEmailListingId(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              >
+                <option value="">— Select a listing —</option>
+                {listings.map(l => (
+                  <option key={l.id} value={l.id}>{l.title}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={e => setEmailSubject(e.target.value)}
+                placeholder="Update on your order"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+              <textarea
+                value={emailMessage}
+                onChange={e => setEmailMessage(e.target.value)}
+                rows={5}
+                placeholder="Hi! Your order is ready for pickup…"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+              />
+            </div>
+
+            <button
+              disabled={emailSending || !emailListingId || !emailSubject || !emailMessage}
+              onClick={async () => {
+                setEmailSending(true);
+                setEmailResult('');
+                try {
+                  await apiFetch('/vendor/send-email', {
+                    method: 'POST',
+                    body: JSON.stringify({ listing_id: emailListingId, subject: emailSubject, message: emailMessage }),
+                  });
+                  setEmailResult('Emails sent successfully!');
+                  setEmailSubject('');
+                  setEmailMessage('');
+                } catch (err) {
+                  setEmailResult(`Error: ${err.message}`);
+                } finally {
+                  setEmailSending(false);
+                }
+              }}
+              className="w-full py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-60 transition-colors"
+            >
+              {emailSending ? 'Sending…' : 'Send Email to Buyers'}
+            </button>
+          </div>
         )}
 
         {/* ── SALES TAB ──────────────────────────────────────────────────────── */}

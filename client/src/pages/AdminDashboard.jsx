@@ -12,6 +12,7 @@ import AdminClubsPanel    from '../components/admin/AdminClubsPanel.jsx';
 import AdminUsersPanel    from '../components/admin/AdminUsersPanel.jsx';
 import AdminListingsPanel from '../components/admin/AdminListingsPanel.jsx';
 import AnalyticsPanel     from '../components/admin/AnalyticsPanel.jsx';
+import DiscountCodesPanel from '../components/admin/DiscountCodesPanel.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n) => `$${Number(n ?? 0).toLocaleString('en-CA', { minimumFractionDigits: 2 })}`;
@@ -53,10 +54,11 @@ function Badge({ value }) {
 // ─── Tabs config ──────────────────────────────────────────────────────────────
 const TABS = [
   { key: 'review',    label: 'Review Listings' },
-  { key: 'clubs',     label: 'Clubs' },
+  { key: 'clubs',     label: 'Organizations' },
   { key: 'users',     label: 'Users' },
   { key: 'orders',    label: 'Orders' },
   { key: 'analytics', label: 'Analytics' },
+  { key: 'discounts', label: 'Discount Codes' },
 ];
 
 // ─── Main dashboard ────────────────────────────────────────────────────────────
@@ -314,6 +316,11 @@ export default function AdminDashboard() {
         {/* ── Analytics ────────────────────────────────────────────────────── */}
         {tab === 'analytics' && (
           <AnalyticsPanel analytics={analytics} loading={!analytics} error={analyticsError} />
+        )}
+
+        {/* ── Discount Codes ───────────────────────────────────────────────── */}
+        {tab === 'discounts' && (
+          <DiscountCodesPanel />
         )}
       </div>
     </div>

@@ -1,12 +1,22 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar, MapPin, Package, Clock, Tag, AlertTriangle,
-  Search, SlidersHorizontal, ShoppingBag, X, ChevronDown,
+  Search, SlidersHorizontal, ShoppingBag, X, ChevronDown, Plus,
 } from 'lucide-react';
 import supabase from '../lib/supabase.js';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import PhotoUpload from '../components/PhotoUpload.jsx';
 
 const fmt = (n) => `$${Number(n ?? 0).toFixed(2)}`;
+
+const PRODUCT_TYPE_OPTIONS = ['T-Shirt', 'Polo', 'Hoodie', 'Hat', 'Banner', 'Other'];
+const emptyListingForm = {
+  title: '', description: '', product_type: 'T-Shirt',
+  price: '', quantity_available: '', cost_per_unit: '',
+  order_deadline: '', pickup_location: '', pickup_instructions: '', pickup_date: '',
+  image_urls: [],
+};
 
 function StatusBadge({ isOpen, isSoldOut }) {
   if (isSoldOut) return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">Sold Out</span>;
@@ -28,12 +38,20 @@ function ListingCard({ listing }) {
     ? Math.ceil((new Date(listing.order_deadline) - new Date()) / (1000 * 60 * 60 * 24))
     : 0;
 
+  const firstImage = listing.image_urls?.[0];
+
   return (
     <div className={`bg-white rounded-2xl border overflow-hidden flex flex-col transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${
       isOpen ? 'border-gray-100 shadow-sm' : 'border-gray-100 shadow-sm opacity-70'
     }`}>
-      {/* Top accent bar */}
-      <div className={`h-1 w-full ${isOpen ? 'bg-gradient-to-r from-primary to-blue-400' : 'bg-gray-200'}`} />
+      {/* Cover image or accent bar */}
+      {firstImage ? (
+        <div className="h-40 overflow-hidden bg-gray-100">
+          <img src={firstImage} alt={listing.title} className="w-full h-full object-cover" />
+        </div>
+      ) : (
+        <div className={`h-1 w-full ${isOpen ? 'bg-gradient-to-r from-primary to-blue-400' : 'bg-gray-200'}`} />
+      )}
 
       <div className="p-5 flex flex-col flex-1">
         {/* Club + Status row */}
@@ -139,6 +157,8 @@ function SkeletonCard() {
 const PRODUCT_TYPES = ['All', 'T-Shirt', 'Hoodie', 'Hat', 'Jacket', 'Crewneck', 'Polo', 'Other'];
 
 export default function Listings() {
+  const { user, isExec, userClubId } = useAuth();
+
   const [listings, setListings] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
@@ -148,25 +168,67 @@ export default function Listings() {
   const [showClosed, setShowClosed] = useState(false);
   const [clubs, setClubs]       = useState([]);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const [listingsRes, clubsRes] = await Promise.all([
-        supabase
-          .from('listings')
-          .select('*, clubs(name)')
-          .eq('status', 'approved')
-          .order('created_at', { ascending: false }),
-        supabase.from('clubs').select('id, name').order('name'),
-      ]);
+  // Post listing modal state
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [postForm, setPostForm]           = useState(emptyListingForm);
+  const [postSubmitting, setPostSubmitting] = useState(false);
+  const [postError, setPostError]         = useState('');
+  const [postSuccess, setPostSuccess]     = useState('');
 
-      if (listingsRes.error) setError(listingsRes.error.message);
-      else setListings(listingsRes.data ?? []);
-      setClubs(clubsRes.data ?? []);
-      setLoading(false);
-    }
-    load();
+  const loadListings = useCallback(async () => {
+    setLoading(true);
+    const [listingsRes, clubsRes] = await Promise.all([
+      supabase
+        .from('listings')
+        .select('*, clubs(name), image_urls')
+        .eq('status', 'approved')
+        .order('created_at', { ascending: false }),
+      supabase.from('clubs').select('id, name').order('name'),
+    ]);
+
+    if (listingsRes.error) setError(listingsRes.error.message);
+    else setListings(listingsRes.data ?? []);
+    setClubs(clubsRes.data ?? []);
+    setLoading(false);
   }, []);
+
+  useEffect(() => { loadListings(); }, [loadListings]);
+
+  const handlePostListing = async (e) => {
+    e.preventDefault();
+    setPostError('');
+    if (!postForm.title || !postForm.price || !postForm.quantity_available || !postForm.order_deadline) {
+      return setPostError('Title, price, quantity, and deadline are required.');
+    }
+    if (!userClubId) return setPostError('Your account is not linked to an organization.');
+    setPostSubmitting(true);
+    try {
+      const { error: insertErr } = await supabase.from('listings').insert({
+        club_id: userClubId,
+        title: postForm.title,
+        description: postForm.description || null,
+        product_type: postForm.product_type,
+        price: parseFloat(postForm.price),
+        quantity_available: parseInt(postForm.quantity_available),
+        cost_per_unit: parseFloat(postForm.cost_per_unit) || 0,
+        order_deadline: new Date(postForm.order_deadline).toISOString(),
+        pickup_location: postForm.pickup_location || null,
+        pickup_instructions: postForm.pickup_instructions || null,
+        pickup_date: postForm.pickup_date || null,
+        image_urls: postForm.image_urls ?? [],
+        status: 'pending',
+      });
+      if (insertErr) throw new Error(insertErr.message);
+      setPostForm(emptyListingForm);
+      setShowPostModal(false);
+      setPostSuccess('Listing submitted for admin approval!');
+      setTimeout(() => setPostSuccess(''), 5000);
+    } catch (err) {
+      setPostError(err.message);
+    } finally {
+      setPostSubmitting(false);
+    }
+  };
 
   const { open, closed, totalOpen, uniqueClubs } = useMemo(() => {
     const filtered = listings.filter(l => {
@@ -215,18 +277,28 @@ export default function Listings() {
             Browse and order custom apparel from student clubs and organizations — all fulfilled by Apparel Studio.
           </p>
 
-          {/* Stats */}
-          <div className="flex flex-wrap gap-6 mt-8">
-            {[
-              { label: 'Open Listings', value: loading ? '–' : totalOpen },
-              { label: 'Active Clubs', value: loading ? '–' : uniqueClubs },
-              { label: 'Secure Checkout', value: 'Stripe' },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex flex-col">
-                <span className="text-2xl font-bold text-white">{value}</span>
-                <span className="text-gray-400 text-xs uppercase tracking-wider mt-0.5">{label}</span>
-              </div>
-            ))}
+          {/* Stats + Post CTA */}
+          <div className="flex flex-wrap items-end justify-between gap-6 mt-8">
+            <div className="flex flex-wrap gap-6">
+              {[
+                { label: 'Open Listings', value: loading ? '–' : totalOpen },
+                { label: 'Active Clubs', value: loading ? '–' : uniqueClubs },
+                { label: 'Secure Checkout', value: 'Stripe' },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex flex-col">
+                  <span className="text-2xl font-bold text-white">{value}</span>
+                  <span className="text-gray-400 text-xs uppercase tracking-wider mt-0.5">{label}</span>
+                </div>
+              ))}
+            </div>
+            {(isExec || user?.role === 'admin') && (
+              <button
+                onClick={() => { setShowPostModal(true); setPostError(''); }}
+                className="flex items-center gap-2 bg-white text-gray-900 font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-gray-100 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Post a Listing
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -300,6 +372,13 @@ export default function Listings() {
 
       {/* ── Content ── */}
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-10">
+
+        {/* Post success banner */}
+        {postSuccess && (
+          <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 rounded-xl px-5 py-4 text-sm">
+            <span>✓</span> {postSuccess}
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -376,6 +455,104 @@ export default function Listings() {
           </section>
         )}
       </div>
+
+      {/* ── Post Listing Modal ── */}
+      {showPostModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="font-bold text-gray-900">Post a Listing</h2>
+              <button onClick={() => setShowPostModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {postError && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {postError}
+                </div>
+              )}
+
+              <form onSubmit={handlePostListing} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                    <input type="text" required value={postForm.title}
+                      onChange={e => setPostForm(f => ({ ...f, title: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      placeholder="Engineering Hoodie 2026" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea value={postForm.description}
+                      onChange={e => setPostForm(f => ({ ...f, description: e.target.value }))} rows={2}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                      placeholder="Colour, print details…" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Product Type</label>
+                    <select value={postForm.product_type} onChange={e => setPostForm(f => ({ ...f, product_type: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                      {PRODUCT_TYPE_OPTIONS.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Price (CAD) *</label>
+                    <input type="number" min="0" step="0.01" required value={postForm.price}
+                      onChange={e => setPostForm(f => ({ ...f, price: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      placeholder="25.00" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                    <input type="number" min="1" required value={postForm.quantity_available}
+                      onChange={e => setPostForm(f => ({ ...f, quantity_available: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      placeholder="50" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Order Deadline *</label>
+                    <input type="datetime-local" required value={postForm.order_deadline}
+                      onChange={e => setPostForm(f => ({ ...f, order_deadline: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pickup Location</label>
+                    <input type="text" value={postForm.pickup_location}
+                      onChange={e => setPostForm(f => ({ ...f, pickup_location: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      placeholder="UC Building, Room 112" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Photos (up to 5)</label>
+                    <PhotoUpload
+                      urls={postForm.image_urls}
+                      onChange={urls => setPostForm(f => ({ ...f, image_urls: urls }))}
+                      disabled={postSubmitting}
+                    />
+                  </div>
+                </div>
+
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+                  Your listing will be submitted as pending and requires admin approval before going live.
+                </p>
+
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setShowPostModal(false)}
+                    className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={postSubmitting}
+                    className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 disabled:opacity-60 transition-colors">
+                    {postSubmitting ? 'Submitting…' : 'Submit for Approval'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

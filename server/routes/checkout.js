@@ -8,7 +8,7 @@ const router = Router();
  * POST /checkout
  * Creates a Stripe Checkout session for a single listing.
  *
- * Body: { listing_id, quantity, size, buyer_name, buyer_email, student_id? }
+ * Body: { listing_id, quantity, size, buyer_name, buyer_email, student_id?, discount_code? }
  */
 router.post('/', async (req, res) => {
   try {
@@ -19,6 +19,7 @@ router.post('/', async (req, res) => {
       buyer_name,
       buyer_email,
       student_id,
+      discount_code,
     } = req.body ?? {};
 
     if (!listing_id || !buyer_name || !buyer_email) {
@@ -62,9 +63,38 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Club Stripe account is not fully activated.' });
     }
 
+    // ── Discount validation ───────────────────────────────────────────────────
+    let discountAmountCents = 0;
+    let appliedDiscountCode = null;
+
+    if (discount_code) {
+      const { data: dc } = await supabase
+        .from('discount_codes')
+        .select('*')
+        .eq('code', discount_code.trim().toUpperCase())
+        .single();
+
+      if (dc) {
+        const codeValid =
+          (!dc.listing_id || dc.listing_id === listing_id) &&
+          (!dc.expires_at || new Date() <= new Date(dc.expires_at)) &&
+          (dc.max_uses === null || dc.uses_count < dc.max_uses);
+
+        if (codeValid) {
+          const subtotal = listing.price * quantity;
+          if (dc.type === 'percent') {
+            discountAmountCents = Math.round(subtotal * (dc.value / 100) * 100);
+          } else {
+            discountAmountCents = Math.min(Math.round(dc.value * 100), Math.round(subtotal * 100));
+          }
+          appliedDiscountCode = dc.code;
+        }
+      }
+    }
+
     // ── Fee calculation ───────────────────────────────────────────────────────
     const unitCents = Math.round(listing.price * 100);
-    const totalCents = unitCents * quantity;
+    const totalCents = Math.max(0, unitCents * quantity - discountAmountCents);
     const platformFeeCents = Math.round(totalCents * (listing.platform_fee_percent / 100));
 
     const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:3000';
@@ -105,6 +135,8 @@ router.post('/', async (req, res) => {
         buyer_name,
         buyer_email,
         student_id: student_id ?? '',
+        discount_code: appliedDiscountCode ?? '',
+        discount_amount: String((discountAmountCents / 100).toFixed(2)),
       },
       customer_email: buyer_email,
       success_url: `${clientUrl}/listings/${listing_id}?status=success`,
