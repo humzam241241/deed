@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Package, Plus, LogOut, Clock, AlertTriangle,
-  Calendar, MapPin, DollarSign, RefreshCw, X, BarChart2, Mail,
+  DollarSign, RefreshCw, X, BarChart2, Mail, Pencil,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import supabase from '../lib/supabase.js';
@@ -69,6 +69,12 @@ export default function ClubDashboard() {
   const [emailMessage, setEmailMessage]     = useState('');
   const [emailSending, setEmailSending]     = useState(false);
   const [emailResult, setEmailResult]       = useState('');
+
+  // Edit listing state
+  const [editListing, setEditListing]   = useState(null);
+  const [editForm, setEditForm]         = useState({});
+  const [editSaving, setEditSaving]     = useState(false);
+  const [editError, setEditError]       = useState('');
 
   // Load club, listings, and all orders for the club in one pass
   const loadData = useCallback(async () => {
@@ -142,6 +148,58 @@ export default function ClubDashboard() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const openEdit = (listing) => {
+    setEditListing(listing);
+    setEditError('');
+    setEditForm({
+      title:               listing.title,
+      description:         listing.description ?? '',
+      product_type:        listing.product_type,
+      price:               listing.price,
+      quantity_available:  listing.quantity_available,
+      cost_per_unit:       listing.cost_per_unit ?? 0,
+      order_deadline:      listing.order_deadline ? listing.order_deadline.slice(0, 16) : '',
+      pickup_location:     listing.pickup_location ?? '',
+      pickup_instructions: listing.pickup_instructions ?? '',
+      pickup_date:         listing.pickup_date ?? '',
+      image_urls:          listing.image_urls ?? [],
+    });
+  };
+
+  const handleEditSave = async (e) => {
+    e.preventDefault();
+    setEditSaving(true);
+    setEditError('');
+    const isApproved = editListing.status === 'approved';
+    const patch = {
+      description:         editForm.description || null,
+      image_urls:          editForm.image_urls ?? [],
+      pickup_location:     editForm.pickup_location || null,
+      pickup_instructions: editForm.pickup_instructions || null,
+      pickup_date:         editForm.pickup_date || null,
+      quantity_available:  parseInt(editForm.quantity_available),
+    };
+    // Allow editing structural fields only on pending listings
+    if (!isApproved) {
+      patch.title          = editForm.title;
+      patch.product_type   = editForm.product_type;
+      patch.price          = parseFloat(editForm.price);
+      patch.cost_per_unit  = parseFloat(editForm.cost_per_unit) || 0;
+      patch.order_deadline = editForm.order_deadline ? new Date(editForm.order_deadline).toISOString() : null;
+    }
+    const { error: err } = await supabase
+      .from('listings')
+      .update(patch)
+      .eq('id', editListing.id);
+    if (err) {
+      setEditError(err.message);
+    } else {
+      setListings(prev => prev.map(l => l.id === editListing.id ? { ...l, ...patch } : l));
+      setEditListing(null);
+    }
+    setEditSaving(false);
   };
 
   // Sales summary stats
@@ -364,6 +422,169 @@ export default function ClubDashboard() {
               </div>
             )}
 
+            {/* ── Edit Modal ─────────────────────────────────────────────── */}
+            {editListing && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                    <div>
+                      <h2 className="font-bold text-gray-900">Edit Listing</h2>
+                      {editListing.status === 'approved' && (
+                        <p className="text-xs text-amber-600 mt-0.5">Approved — price, deadline, and product type are locked.</p>
+                      )}
+                    </div>
+                    <button onClick={() => setEditListing(null)} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="p-6">
+                    {editError && (
+                      <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {editError}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleEditSave} className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                        {/* Title — locked when approved */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Title</label>
+                          <input
+                            type="text" required
+                            value={editForm.title}
+                            disabled={editListing.status === 'approved'}
+                            onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                          />
+                        </div>
+
+                        {/* Description */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
+                          <textarea
+                            rows={2}
+                            value={editForm.description}
+                            onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                          />
+                        </div>
+
+                        {/* Product type — locked when approved */}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Product Type</label>
+                          <select
+                            value={editForm.product_type}
+                            disabled={editListing.status === 'approved'}
+                            onChange={e => setEditForm(f => ({ ...f, product_type: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                          >
+                            {PRODUCT_TYPES.map(t => <option key={t}>{t}</option>)}
+                          </select>
+                        </div>
+
+                        {/* Price — locked when approved */}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Price per unit (CAD)</label>
+                          <input
+                            type="number" min="0" step="0.01" required
+                            value={editForm.price}
+                            disabled={editListing.status === 'approved'}
+                            onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                          />
+                        </div>
+
+                        {/* Quantity */}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Quantity Available</label>
+                          <input
+                            type="number" min="0" required
+                            value={editForm.quantity_available}
+                            onChange={e => setEditForm(f => ({ ...f, quantity_available: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          />
+                        </div>
+
+                        {/* Order deadline — locked when approved */}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Order Deadline</label>
+                          <input
+                            type="datetime-local"
+                            value={editForm.order_deadline}
+                            disabled={editListing.status === 'approved'}
+                            onChange={e => setEditForm(f => ({ ...f, order_deadline: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                          />
+                        </div>
+
+                        {/* Pickup location */}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Pickup Location</label>
+                          <input
+                            type="text"
+                            value={editForm.pickup_location}
+                            onChange={e => setEditForm(f => ({ ...f, pickup_location: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          />
+                        </div>
+
+                        {/* Pickup date */}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Pickup Date</label>
+                          <input
+                            type="date"
+                            value={editForm.pickup_date}
+                            onChange={e => setEditForm(f => ({ ...f, pickup_date: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          />
+                        </div>
+
+                        {/* Pickup instructions */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Pickup Instructions</label>
+                          <textarea
+                            rows={2}
+                            value={editForm.pickup_instructions}
+                            onChange={e => setEditForm(f => ({ ...f, pickup_instructions: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                          />
+                        </div>
+
+                        {/* Photos */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Photos (up to 5)</label>
+                          <PhotoUpload
+                            urls={editForm.image_urls}
+                            onChange={urls => setEditForm(f => ({ ...f, image_urls: urls }))}
+                            disabled={editSaving}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditListing(null)}
+                          className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={editSaving}
+                          className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 disabled:opacity-60 transition-colors"
+                        >
+                          {editSaving ? 'Saving…' : 'Save Changes'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Listings list */}
             {listings.length === 0 && !loading ? (
               <div className="bg-white rounded-2xl border border-gray-100 px-8 py-12 text-center">
@@ -376,7 +597,7 @@ export default function ClubDashboard() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
-                        {['Title', 'Status', 'Qty Left', 'Deadline', 'Link'].map(h => (
+                        {['Title', 'Status', 'Qty Left', 'Deadline', 'Link', ''].map(h => (
                           <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -402,6 +623,16 @@ export default function ClubDashboard() {
                               <Link to={`/listings/${l.id}`} className="text-xs text-primary underline">
                                 Public page
                               </Link>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {l.status !== 'closed' && (
+                              <button
+                                onClick={() => openEdit(l)}
+                                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-400 px-2.5 py-1 rounded-md transition-colors"
+                              >
+                                <Pencil className="w-3 h-3" /> Edit
+                              </button>
                             )}
                           </td>
                         </tr>
