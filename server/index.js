@@ -18,22 +18,26 @@ const app = express();
 const PORT = process.env.PORT || 4242;
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-const allowedOrigins = [
-  process.env.CLIENT_URL ?? 'http://localhost:3000',
-  'https://deed-jet.vercel.app',          // production domain
+const allowedOrigins = new Set([
+  'https://deed-jet.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173',
-];
+  // Also admit whatever CLIENT_URL is set to on the server (handles future domain changes)
+  ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
+]);
 
-// Matches any Vercel preview deployment for this project
-const vercelPreviewPattern = /^https:\/\/deed-[a-z0-9]+-humzam241-2402s-projects\.vercel\.app$/;
+// Matches ANY Vercel deployment for this project (preview + branch deploys)
+const vercelPattern = /^https:\/\/deed[a-z0-9-]*\.vercel\.app$/;
 
 app.use(cors({
   origin: (origin, cb) => {
+    // Allow server-to-server / Postman (no Origin header)
     if (!origin) return cb(null, true);
-    if (allowedOrigins.includes(origin)) return cb(null, true);
-    if (vercelPreviewPattern.test(origin)) return cb(null, true);
-    cb(new Error(`CORS: origin ${origin} not allowed`));
+    if (allowedOrigins.has(origin)) return cb(null, true);
+    if (vercelPattern.test(origin)) return cb(null, true);
+    // Return false (403) instead of throwing — prevents Express 500/503
+    console.warn(`[CORS] Rejected origin: ${origin}`);
+    cb(null, false);
   },
   credentials: true,
 }));
