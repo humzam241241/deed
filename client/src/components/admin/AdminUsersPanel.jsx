@@ -138,13 +138,19 @@ export default function AdminUsersPanel() {
 
                   {/* Exec approved */}
                   <td className="px-5 py-3.5">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      u.is_exec_approved
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      {u.is_exec_approved ? 'Approved' : 'Not approved'}
-                    </span>
+                    {u.role === 'admin' ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                        Approved
+                      </span>
+                    ) : (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        u.is_exec_approved
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {u.is_exec_approved ? 'Approved' : 'Not approved'}
+                      </span>
+                    )}
                   </td>
 
                   {/* Actions */}
