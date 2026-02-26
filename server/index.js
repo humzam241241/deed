@@ -1,28 +1,33 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-import checkoutRouter       from './routes/checkout.js';
-import webhookRouter        from './routes/webhook.js';
-import refundRouter         from './routes/refund.js';
-import analyticsRouter      from './routes/analytics.js';
-import connectRouter        from './routes/connect.js';
-import deleteUserRouter     from './routes/deleteUser.js';
-import discountCodesRouter  from './routes/discountCodes.js';
-import sendEmailRouter      from './routes/sendEmail.js';
+import checkoutRouter        from './routes/checkout.js';
+import webhookRouter         from './routes/webhook.js';
+import refundRouter          from './routes/refund.js';
+import analyticsRouter       from './routes/analytics.js';
+import connectRouter         from './routes/connect.js';
+import deleteUserRouter      from './routes/deleteUser.js';
+import discountCodesRouter   from './routes/discountCodes.js';
+import sendEmailRouter       from './routes/sendEmail.js';
 import { startAutoCloseJob } from './jobs/autoClose.js';
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 4242;
+const isProd = process.env.NODE_ENV === 'production';
+
+// ── Security headers ─────────────────────────────────────────────────────────
+app.use(helmet());
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 const allowedOrigins = new Set([
   'https://deed-jet.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173',
-  // Also admit whatever CLIENT_URL is set to on the server (handles future domain changes)
   ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
 ]);
 
@@ -31,15 +36,30 @@ const vercelPattern = /^https:\/\/deed[a-z0-9-]*\.vercel\.app$/;
 
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow server-to-server / Postman (no Origin header)
     if (!origin) return cb(null, true);
     if (allowedOrigins.has(origin)) return cb(null, true);
     if (vercelPattern.test(origin)) return cb(null, true);
-    // Return false (403) instead of throwing — prevents Express 500/503
     console.warn(`[CORS] Rejected origin: ${origin}`);
     cb(null, false);
   },
   credentials: true,
+}));
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+// Global: 200 req / 15 min per IP
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+}));
+
+// Tighter limit on checkout to prevent abuse
+app.use('/checkout', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { error: 'Too many checkout attempts, please try again later.' },
 }));
 
 // ── Webhook route MUST use raw body before express.json() ────────────────────
@@ -61,8 +81,23 @@ app.use('/admin/discount-codes',  discountCodesRouter);
 app.use('/discount',              discountCodesRouter);
 app.use('/vendor/send-email',     sendEmailRouter);
 
+// ── 404 handler ───────────────────────────────────────────────────────────────
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Route not found.' });
+});
+
+// ── Global error handler ──────────────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  console.error('[unhandled error]', err);
+  const status = err.status ?? err.statusCode ?? 500;
+  // Never leak stack traces to clients in production
+  const message = isProd ? 'An unexpected error occurred.' : (err.message ?? 'Internal server error');
+  res.status(status).json({ error: message });
+});
+
 // ── Start server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`API Server running on http://localhost:${PORT}`);
+  console.log(`API Server running on port ${PORT}`);
   startAutoCloseJob();
 });
