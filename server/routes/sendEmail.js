@@ -24,8 +24,9 @@ router.post('/', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'listing_id, subject, and message are required.' });
   }
 
-  const { user } = req;
-  if (user.role !== 'club_exec' && user.role !== 'admin') {
+  const role    = req.userRole;
+  const clubId  = req.userClubId;
+  if (role !== 'club_exec' && role !== 'admin') {
     return res.status(403).json({ error: 'Forbidden.' });
   }
 
@@ -42,7 +43,7 @@ router.post('/', requireAuth, async (req, res) => {
     return res.status(404).json({ error: 'Listing not found.' });
   }
 
-  if (user.role === 'club_exec' && listing.club_id !== user.club_id) {
+  if (role === 'club_exec' && listing.club_id !== clubId) {
     return res.status(403).json({ error: 'You do not own this listing.' });
   }
 

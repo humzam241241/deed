@@ -8,6 +8,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "@supabase/supabase-js": "^2.45.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
