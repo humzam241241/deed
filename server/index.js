@@ -65,8 +65,8 @@ app.use('/checkout', rateLimit({
 // ── Webhook route MUST use raw body before express.json() ────────────────────
 app.use('/webhook', express.raw({ type: 'application/json' }), webhookRouter);
 
-// ── JSON body parser for all other routes ────────────────────────────────────
-app.use(express.json());
+// ── JSON body parser — 50kb limit prevents large payload abuse ───────────────
+app.use(express.json({ limit: '50kb' }));
 
 // ── Health ───────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));

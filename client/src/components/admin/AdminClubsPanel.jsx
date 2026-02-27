@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Building2, AlertTriangle, ExternalLink, RefreshCw } from 'lucide-react';
+import { Plus, X, Building2, AlertTriangle, RefreshCw, DollarSign } from 'lucide-react';
 import supabase from '../../lib/supabase.js';
-import { createConnectedAccount, getOnboardingLink } from '../../lib/api.js';
 
 export default function AdminClubsPanel() {
-  const [clubs, setClubs]         = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
-  const [showForm, setShowForm]   = useState(false);
-  const [name, setName]           = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [connectingId, setConnectingId] = useState(null);
+  const [clubs, setClubs]             = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [showForm, setShowForm]       = useState(false);
+  const [name, setName]               = useState('');
+  const [submitting, setSubmitting]   = useState(false);
+
+  // Payout notes — keyed by club.id
+  const [payoutNote, setPayoutNote]   = useState({});
+  const [savingNote, setSavingNote]   = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,22 +35,14 @@ export default function AdminClubsPanel() {
     setSubmitting(false);
   };
 
-  const handleCreateStripe = async (club_id) => {
-    setConnectingId(club_id);
-    try {
-      await createConnectedAccount(club_id);
-      await load();
-    } catch (err) { setError(err.message); }
-    setConnectingId(null);
-  };
-
-  const handleOnboard = async (club_id) => {
-    setConnectingId(club_id);
-    try {
-      const { url } = await getOnboardingLink(club_id);
-      window.open(url, '_blank');
-    } catch (err) { setError(err.message); }
-    setConnectingId(null);
+  const handleSaveNote = async (clubId) => {
+    setSavingNote(clubId);
+    const { error: err } = await supabase
+      .from('clubs')
+      .update({ payout_notes: payoutNote[clubId] ?? '' })
+      .eq('id', clubId);
+    if (err) setError(err.message);
+    setSavingNote(null);
   };
 
   return (
@@ -60,6 +54,15 @@ export default function AdminClubsPanel() {
         </div>
       )}
 
+      {/* Info banner */}
+      <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-4 py-3 text-sm">
+        <DollarSign className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <span>
+          Payments are collected into the platform Stripe account. 
+          Pay out each organization manually after funds clear. Use the notes field to track payout status.
+        </span>
+      </div>
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">{clubs.length} organization{clubs.length !== 1 ? 's' : ''} registered</p>
         <div className="flex gap-2">
@@ -70,12 +73,12 @@ export default function AdminClubsPanel() {
             onClick={() => { setShowForm(s => !s); setName(''); setError(''); }}
             className="flex items-center gap-1.5 bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors"
           >
-            <Plus className="w-3.5 h-3.5" /> Create Club
+            <Plus className="w-3.5 h-3.5" /> Create Organization
           </button>
         </div>
       </div>
 
-      {/* Create club form */}
+      {/* Create form */}
       {showForm && (
         <form
           onSubmit={handleCreate}
@@ -116,18 +119,18 @@ export default function AdminClubsPanel() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Organization Name', 'Stripe Account', 'Status', 'Actions'].map(h => (
+                {['Organization', 'Payout Notes / Status', 'Actions'].map(h => (
                   <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading && (
-                <tr><td colSpan={4} className="text-center py-10 text-gray-400 text-sm">Loading clubs…</td></tr>
+                <tr><td colSpan={3} className="text-center py-10 text-gray-400 text-sm">Loading…</td></tr>
               )}
               {!loading && clubs.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="text-center py-12">
+                  <td colSpan={3} className="text-center py-12">
                     <Building2 className="w-8 h-8 text-gray-200 mx-auto mb-2" />
                     <p className="text-sm text-gray-400">No organizations yet. Create the first one above.</p>
                   </td>
@@ -140,40 +143,25 @@ export default function AdminClubsPanel() {
                       <Building2 className="w-4 h-4 text-gray-300 flex-shrink-0" />
                       <span className="font-medium text-gray-800">{club.name}</span>
                     </div>
+                    <div className="text-xs text-gray-400 mt-0.5 font-mono">{club.id.slice(0, 8)}…</div>
                   </td>
-                  <td className="px-5 py-3.5 font-mono text-xs text-gray-400">
-                    {club.stripe_account_id || '—'}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      club.stripe_account_id
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {club.stripe_account_id ? 'Stripe connected' : 'Stripe not set up'}
-                    </span>
+                  <td className="px-5 py-3.5 min-w-[260px]">
+                    <input
+                      type="text"
+                      defaultValue={club.payout_notes ?? ''}
+                      onChange={e => setPayoutNote(n => ({ ...n, [club.id]: e.target.value }))}
+                      placeholder="e.g. Paid out $420 on 2026-03-01"
+                      className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-900 text-gray-600"
+                    />
                   </td>
                   <td className="px-5 py-3.5">
-                    <div className="flex gap-1.5">
-                      {!club.stripe_account_id ? (
-                        <button
-                          onClick={() => handleCreateStripe(club.id)}
-                          disabled={connectingId === club.id}
-                          className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md hover:bg-blue-100 disabled:opacity-50 transition-colors"
-                        >
-                          {connectingId === club.id ? 'Creating…' : 'Connect Stripe'}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleOnboard(club.id)}
-                          disabled={connectingId === club.id}
-                          className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 border border-gray-200 px-2.5 py-1 rounded-md hover:bg-gray-200 disabled:opacity-50 transition-colors"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          {connectingId === club.id ? 'Loading…' : 'Onboarding Link'}
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => handleSaveNote(club.id)}
+                      disabled={savingNote === club.id}
+                      className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                    >
+                      {savingNote === club.id ? 'Saving…' : 'Save Note'}
+                    </button>
                   </td>
                 </tr>
               ))}
